@@ -28,6 +28,19 @@ from isaaclab.devices.retargeter_base import RetargeterBase, RetargeterCfg
 from isaaclab.devices.spacemouse import Se2SpaceMouse, Se2SpaceMouseCfg, Se3SpaceMouse, Se3SpaceMouseCfg
 
 with contextlib.suppress(ModuleNotFoundError):
+    # May fail if xrobotoolkit_sdk is not available
+    from isaaclab.devices.xrobotoolkit import (
+        XRControllerDevice,
+        XRControllerDeviceCfg,
+        XRGripperRetargeter,
+        XRGripperRetargeterCfg,
+        XRSe3AbsRetargeter,
+        XRSe3AbsRetargeterCfg,
+        XRSe3RelRetargeter,
+        XRSe3RelRetargeterCfg,
+    )
+
+with contextlib.suppress(ModuleNotFoundError):
     # May fail if xr is not in use
     from isaaclab.devices.openxr import ManusVive, ManusViveCfg, OpenXRDevice, OpenXRDeviceCfg
 
@@ -43,6 +56,10 @@ DEVICE_MAP: dict[type[DeviceCfg], type[DeviceBase]] = {
     ManusViveCfg: ManusVive,
 }
 
+# Add XRoboToolkit devices if available
+with contextlib.suppress(NameError):
+    DEVICE_MAP[XRControllerDeviceCfg] = XRControllerDevice
+
 
 # Map configuration types to their corresponding retargeter classes
 RETARGETER_MAP: dict[type[RetargeterCfg], type[RetargeterBase]] = {
@@ -51,6 +68,12 @@ RETARGETER_MAP: dict[type[RetargeterCfg], type[RetargeterBase]] = {
     GripperRetargeterCfg: GripperRetargeter,
     GR1T2RetargeterCfg: GR1T2Retargeter,
 }
+
+# Add XRoboToolkit retargeters if available
+with contextlib.suppress(NameError):
+    RETARGETER_MAP[XRSe3RelRetargeterCfg] = XRSe3RelRetargeter
+    RETARGETER_MAP[XRSe3AbsRetargeterCfg] = XRSe3AbsRetargeter
+    RETARGETER_MAP[XRGripperRetargeterCfg] = XRGripperRetargeter
 
 
 def create_teleop_device(
