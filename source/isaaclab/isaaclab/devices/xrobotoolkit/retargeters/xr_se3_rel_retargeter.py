@@ -15,6 +15,13 @@ from isaaclab.devices.retargeter_base import RetargeterBase, RetargeterCfg
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.markers.config import FRAME_MARKER_CFG
 
+# Default coordinate transformation from headset frame to world frame
+R_HEADSET_TO_WORLD = np.array([
+    [0, 0, -1],
+    [-1, 0, 0],
+    [0, 1, 0],
+])
+
 
 @dataclass
 class XRSe3RelRetargeterCfg(RetargeterCfg):
@@ -48,18 +55,19 @@ class XRSe3RelRetargeterCfg(RetargeterCfg):
     """If True, show a visual marker representing the target end-effector pose."""
 
     R_xr_to_world: np.ndarray | None = None
-    """Rotation matrix to transform XR frame to world frame. If None, uses identity."""
+    """Rotation matrix to transform XR frame to world frame. If None, uses R_HEADSET_TO_WORLD."""
 
 
 class XRSe3RelRetargeter(RetargeterBase):
     """Retargets XR controller data to end-effector commands using relative positioning.
 
-    This retargeter calculates delta poses between consecutive controller poses to generate
-    incremental robot movements. It activates when the specified button (grip or trigger)
-    is pressed beyond the threshold.
+    This retargeter calculates delta poses between consecutive controller frames to generate
+    incremental robot movements. It only outputs deltas when the specified button (grip or trigger)
+    is pressed beyond the threshold, similar to Isaac Lab's OpenXR Se3RelRetargeter.
 
     Features:
-    - Delta-based control with configurable scaling
+    - Frame-to-frame delta control with configurable scaling
+    - Activation-based: only outputs deltas when button is pressed
     - Optional constraint to zero out X/Y rotations (keeping only Z-axis rotation)
     - Motion smoothing with adjustable parameters
     - Optional visualization of the target end-effector pose
@@ -90,12 +98,12 @@ class XRSe3RelRetargeter(RetargeterBase):
         if cfg.R_xr_to_world is not None:
             self._R_xr_to_world = cfg.R_xr_to_world
         else:
-            self._R_xr_to_world = np.eye(3)
+            self._R_xr_to_world = R_HEADSET_TO_WORLD
 
-        # State tracking
+        # State tracking - store previous frame's controller pose
         self._is_active = False
-        self._ref_controller_pos = None
-        self._ref_controller_quat = None
+        self._previous_controller_pos = np.zeros(3, dtype=np.float32)
+        self._previous_controller_quat = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)  # [qw, qx, qy, qz]
         self._smoothed_delta_pos = np.zeros(3)
         self._smoothed_delta_rot = np.zeros(3)
 
@@ -138,7 +146,7 @@ class XRSe3RelRetargeter(RetargeterBase):
 
         # Extract position and quaternion from controller pose
         # XRoboToolkit format: [x, y, z, qx, qy, qz, qw]
-        controller_pos = controller_pose[:3]
+        controller_pos = controller_pose[:3].copy()
         controller_quat = np.array([controller_pose[6], controller_pose[3], controller_pose[4], controller_pose[5]])  # Convert to [qw, qx, qy, qz]
 
         # Check activation status
@@ -147,24 +155,29 @@ class XRSe3RelRetargeter(RetargeterBase):
         is_active = activation_value > self._activation_threshold
 
         # Handle activation state changes
-        if is_active and not self._is_active:
-            # Just activated - store reference pose
-            self._ref_controller_pos = controller_pos.copy()
-            self._ref_controller_quat = controller_quat.copy()
-            self._is_active = True
-            # Return zero delta on first activation
-            return torch.zeros(6, dtype=torch.float32, device=self._sim_device)
-        elif not is_active:
-            # Not active - reset and return zero
+        if not is_active:
+            # Not active - reset state and return zero
             self._is_active = False
-            self._ref_controller_pos = None
-            self._ref_controller_quat = None
+            self._previous_controller_pos = controller_pos
+            self._previous_controller_quat = controller_quat
             self._smoothed_delta_pos = np.zeros(3)
             self._smoothed_delta_rot = np.zeros(3)
             return torch.zeros(6, dtype=torch.float32, device=self._sim_device)
 
-        # Calculate delta pose
+        # Active - calculate delta from previous frame
+        if not self._is_active:
+            # Just became active - initialize previous pose and return zero
+            self._is_active = True
+            self._previous_controller_pos = controller_pos
+            self._previous_controller_quat = controller_quat
+            return torch.zeros(6, dtype=torch.float32, device=self._sim_device)
+
+        # Calculate delta pose from previous frame
         delta_command = self._calculate_delta_pose(controller_pos, controller_quat)
+
+        # Update previous pose for next frame
+        self._previous_controller_pos = controller_pos
+        self._previous_controller_quat = controller_quat
 
         # Convert to torch tensor
         ee_command = torch.tensor(delta_command, dtype=torch.float32, device=self._sim_device)
@@ -172,7 +185,7 @@ class XRSe3RelRetargeter(RetargeterBase):
         return ee_command
 
     def _calculate_delta_pose(self, controller_pos: np.ndarray, controller_quat: np.ndarray) -> np.ndarray:
-        """Calculate delta pose from reference controller pose.
+        """Calculate delta pose from previous frame's controller pose.
 
         Args:
             controller_pos: Current controller position [x, y, z]
@@ -183,24 +196,22 @@ class XRSe3RelRetargeter(RetargeterBase):
         """
         # Apply coordinate transformation
         controller_pos_world = self._R_xr_to_world @ controller_pos
-        ref_pos_world = self._R_xr_to_world @ self._ref_controller_pos
+        previous_pos_world = self._R_xr_to_world @ self._previous_controller_pos
 
-        # Calculate position delta
-        delta_pos = controller_pos_world - ref_pos_world
+        # Calculate position delta from previous frame
+        delta_pos = controller_pos_world - previous_pos_world
 
-        # Calculate rotation delta
+        # Calculate rotation delta from previous frame
         # Convert quaternions to scipy Rotation objects (expects [qx, qy, qz, qw])
         current_rot = Rotation.from_quat([controller_quat[1], controller_quat[2], controller_quat[3], controller_quat[0]])
-        ref_rot = Rotation.from_quat([self._ref_controller_quat[1], self._ref_controller_quat[2],
-                                      self._ref_controller_quat[3], self._ref_controller_quat[0]])
+        previous_rot = Rotation.from_quat([self._previous_controller_quat[1], self._previous_controller_quat[2],
+                                           self._previous_controller_quat[3], self._previous_controller_quat[0]])
 
-        # Calculate relative rotation
-        relative_rotation = current_rot * ref_rot.inv()
+        # Calculate relative rotation: current * previous^-1
+        relative_rotation = current_rot * previous_rot.inv()
         delta_rot = relative_rotation.as_rotvec()
 
-        # Apply rotation transformation
-        R_transform = np.eye(4)
-        R_transform[:3, :3] = self._R_xr_to_world
+        # Apply rotation transformation to world frame
         R_quat = Rotation.from_matrix(self._R_xr_to_world)
         delta_rot_world = (R_quat * Rotation.from_rotvec(delta_rot) * R_quat.inv()).as_rotvec()
 
@@ -223,13 +234,16 @@ class XRSe3RelRetargeter(RetargeterBase):
 
         # Update visualization if enabled
         if self._enable_visualization:
-            # Convert rotation vector to quaternion and combine with current rotation
-            delta_quat = Rotation.from_rotvec(rotation).as_quat()  # x, y, z, w format
+            # Accumulate position
+            self._visualization_pos = self._visualization_pos + position
+
+            # Accumulate rotation
+            delta_quat = Rotation.from_rotvec(rotation).as_quat()  # [qx, qy, qz, qw] format
             current_viz_rot = Rotation.from_quat([self._visualization_rot[1], self._visualization_rot[2],
                                                    self._visualization_rot[3], self._visualization_rot[0]])
             new_rot = Rotation.from_quat(delta_quat) * current_viz_rot
-            self._visualization_pos = self._visualization_pos + position
-            # Convert back to w, x, y, z format
+
+            # Convert back to [qw, qx, qy, qz] format
             new_rot_quat = new_rot.as_quat()
             self._visualization_rot = np.array([new_rot_quat[3], new_rot_quat[0], new_rot_quat[1], new_rot_quat[2]])
             self._update_visualization()

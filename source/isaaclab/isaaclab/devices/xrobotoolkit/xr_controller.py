@@ -65,13 +65,14 @@ class XRControllerDevice(DeviceBase):
     * button: Uses primary button for gripper toggle
     """
 
-    def __init__(self, cfg: XRControllerDeviceCfg):
+    def __init__(self, cfg: XRControllerDeviceCfg, retargeters: list | None = None):
         """Initialize the XR controller device.
 
         Args:
             cfg: Configuration object for XR controller settings.
+            retargeters: List of retargeter instances to transform raw data into robot commands.
         """
-        super().__init__()
+        super().__init__(retargeters)
 
         if not XRT_AVAILABLE:
             raise RuntimeError("xrobotoolkit_sdk is not available. Cannot initialize XRControllerDevice.")

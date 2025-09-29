@@ -117,13 +117,17 @@ class XRGripperRetargeter(RetargeterBase):
             input_value: Raw input value [0-1]
 
         Returns:
-            float: Gripper command value [0-1]
+            float: Gripper command value mapped to [closed_value, open_value] range
         """
-        # Invert if requested
+        # Invert if requested (flip the input range)
         if self._invert:
-            return 1.0 - input_value
-        else:
-            return input_value
+            input_value = 1.0 - input_value
+
+        # Map from [0, 1] to [closed_value, open_value]
+        # input_value=0.0 → closed_value, input_value=1.0 → open_value
+        gripper_value = self._closed_value + input_value * (self._open_value - self._closed_value)
+
+        return gripper_value
 
     def _process_binary(self, input_value: float) -> float:
         """Process input in binary mode with hysteresis.

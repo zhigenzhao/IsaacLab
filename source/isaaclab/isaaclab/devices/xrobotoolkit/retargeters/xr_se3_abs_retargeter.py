@@ -15,6 +15,13 @@ from isaaclab.devices.retargeter_base import RetargeterBase, RetargeterCfg
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.markers.config import FRAME_MARKER_CFG
 
+# Default coordinate transformation from headset frame to world frame
+R_HEADSET_TO_WORLD = np.array([
+    [0, 0, -1],
+    [-1, 0, 0],
+    [0, 1, 0],
+])
+
 
 @dataclass
 class XRSe3AbsRetargeterCfg(RetargeterCfg):
@@ -30,7 +37,7 @@ class XRSe3AbsRetargeterCfg(RetargeterCfg):
     """If True, visualize the target pose in the scene."""
 
     R_xr_to_world: np.ndarray | None = None
-    """Rotation matrix to transform XR frame to world frame. If None, uses identity."""
+    """Rotation matrix to transform XR frame to world frame. If None, uses R_HEADSET_TO_WORLD."""
 
     position_offset: np.ndarray | None = None
     """Offset to apply to controller position [x, y, z]. If None, uses zeros."""
@@ -74,7 +81,7 @@ class XRSe3AbsRetargeter(RetargeterBase):
         if cfg.R_xr_to_world is not None:
             self._R_xr_to_world = cfg.R_xr_to_world
         else:
-            self._R_xr_to_world = np.eye(3)
+            self._R_xr_to_world = R_HEADSET_TO_WORLD
 
         # Set up position offset
         if cfg.position_offset is not None:
