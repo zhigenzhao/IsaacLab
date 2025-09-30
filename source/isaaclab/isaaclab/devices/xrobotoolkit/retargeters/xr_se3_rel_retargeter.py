@@ -12,6 +12,7 @@ from scipy.spatial.transform import Rotation
 from typing import Any
 
 from isaaclab.devices.retargeter_base import RetargeterBase, RetargeterCfg
+from isaaclab.devices.xrobotoolkit.xr_controller import XRControllerDevice
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.markers.config import FRAME_MARKER_CFG
 
@@ -137,7 +138,10 @@ class XRSe3RelRetargeter(RetargeterBase):
             torch.Tensor: 6D tensor containing position delta (xyz) and rotation delta (rx,ry,rz)
         """
         # Get controller pose based on control hand
-        controller_key = f"{self._control_hand}_controller"
+        if self._control_hand == "left":
+            controller_key = XRControllerDevice.XRControllerDeviceValues.LEFT_CONTROLLER.value
+        else:
+            controller_key = XRControllerDevice.XRControllerDeviceValues.RIGHT_CONTROLLER.value
         controller_pose = data.get(controller_key)
 
         if controller_pose is None:
@@ -150,7 +154,16 @@ class XRSe3RelRetargeter(RetargeterBase):
         controller_quat = np.array([controller_pose[6], controller_pose[3], controller_pose[4], controller_pose[5]])  # Convert to [qw, qx, qy, qz]
 
         # Check activation status
-        activation_key = f"{self._control_hand}_{self._activation_source}"
+        if self._control_hand == "left":
+            if self._activation_source == "grip":
+                activation_key = XRControllerDevice.XRControllerDeviceValues.LEFT_GRIP.value
+            else:
+                activation_key = XRControllerDevice.XRControllerDeviceValues.LEFT_TRIGGER.value
+        else:
+            if self._activation_source == "grip":
+                activation_key = XRControllerDevice.XRControllerDeviceValues.RIGHT_GRIP.value
+            else:
+                activation_key = XRControllerDevice.XRControllerDeviceValues.RIGHT_TRIGGER.value
         activation_value = data.get(activation_key, 0.0)
         is_active = activation_value > self._activation_threshold
 

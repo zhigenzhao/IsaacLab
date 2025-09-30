@@ -8,6 +8,7 @@
 import numpy as np
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 from ..device_base import DeviceBase, DeviceCfg
@@ -50,6 +51,7 @@ class XRControllerDevice(DeviceBase):
 
     Raw data format (_get_raw_data output):
     * A dictionary containing controller poses, input states, and button states
+    * Dictionary keys are XRControllerDeviceValues enum members
     * Controller poses as 7-element arrays: [x, y, z, qw, qx, qy, qz]
     * Input values (triggers, grips) as floats [0-1]
     * Button states as boolean values
@@ -64,6 +66,22 @@ class XRControllerDevice(DeviceBase):
     * grip: Uses grip value for gripper control
     * button: Uses primary button for gripper toggle
     """
+
+    class XRControllerDeviceValues(Enum):
+        """Enum for XR controller device data keys.
+
+        Provides type-safe keys for accessing device data in the dictionary returned
+        by _get_raw_data(). This enables IDE autocomplete and prevents typos.
+        """
+        LEFT_CONTROLLER = "left_controller"      # Left controller pose [x, y, z, qw, qx, qy, qz]
+        RIGHT_CONTROLLER = "right_controller"    # Right controller pose [x, y, z, qw, qx, qy, qz]
+        LEFT_TRIGGER = "left_trigger"            # Left trigger value [0-1]
+        RIGHT_TRIGGER = "right_trigger"          # Right trigger value [0-1]
+        LEFT_GRIP = "left_grip"                  # Left grip value [0-1]
+        RIGHT_GRIP = "right_grip"                # Right grip value [0-1]
+        BUTTONS = "buttons"                      # Dictionary of button states
+        TIMESTAMP = "timestamp"                  # Timestamp in nanoseconds
+        CONFIG = "config"                        # Device configuration dictionary
 
     def __init__(self, cfg: XRControllerDeviceCfg, retargeters: list | None = None):
         """Initialize the XR controller device.
@@ -192,15 +210,15 @@ class XRControllerDevice(DeviceBase):
             self._handle_button_callbacks(buttons)
 
             return {
-                'left_controller': left_pose,
-                'right_controller': right_pose,
-                'left_trigger': left_trigger,
-                'right_trigger': right_trigger,
-                'left_grip': left_grip,
-                'right_grip': right_grip,
-                'buttons': buttons,
-                'timestamp': xrt.get_time_stamp_ns(),
-                'config': {
+                self.XRControllerDeviceValues.LEFT_CONTROLLER.value: left_pose,
+                self.XRControllerDeviceValues.RIGHT_CONTROLLER.value: right_pose,
+                self.XRControllerDeviceValues.LEFT_TRIGGER.value: left_trigger,
+                self.XRControllerDeviceValues.RIGHT_TRIGGER.value: right_trigger,
+                self.XRControllerDeviceValues.LEFT_GRIP.value: left_grip,
+                self.XRControllerDeviceValues.RIGHT_GRIP.value: right_grip,
+                self.XRControllerDeviceValues.BUTTONS.value: buttons,
+                self.XRControllerDeviceValues.TIMESTAMP.value: xrt.get_time_stamp_ns(),
+                self.XRControllerDeviceValues.CONFIG.value: {
                     'pos_sensitivity': self.pos_sensitivity,
                     'rot_sensitivity': self.rot_sensitivity,
                     'control_mode': self.control_mode,
@@ -214,17 +232,17 @@ class XRControllerDevice(DeviceBase):
             # Return default values on error
             default_pose = np.zeros(7, dtype=np.float32)
             return {
-                'left_controller': default_pose,
-                'right_controller': default_pose,
-                'left_trigger': 0.0,
-                'right_trigger': 0.0,
-                'left_grip': 0.0,
-                'right_grip': 0.0,
-                'buttons': {k: False for k in ['left_primary', 'right_primary', 'left_secondary',
+                self.XRControllerDeviceValues.LEFT_CONTROLLER.value: default_pose,
+                self.XRControllerDeviceValues.RIGHT_CONTROLLER.value: default_pose,
+                self.XRControllerDeviceValues.LEFT_TRIGGER.value: 0.0,
+                self.XRControllerDeviceValues.RIGHT_TRIGGER.value: 0.0,
+                self.XRControllerDeviceValues.LEFT_GRIP.value: 0.0,
+                self.XRControllerDeviceValues.RIGHT_GRIP.value: 0.0,
+                self.XRControllerDeviceValues.BUTTONS.value: {k: False for k in ['left_primary', 'right_primary', 'left_secondary',
                                                'right_secondary', 'left_menu', 'right_menu',
                                                'left_axis_click', 'right_axis_click']},
-                'timestamp': 0,
-                'config': {
+                self.XRControllerDeviceValues.TIMESTAMP.value: 0,
+                self.XRControllerDeviceValues.CONFIG.value: {
                     'pos_sensitivity': self.pos_sensitivity,
                     'rot_sensitivity': self.rot_sensitivity,
                     'control_mode': self.control_mode,

@@ -8,6 +8,7 @@
 from .xr_gripper_retargeter import XRGripperRetargeter, XRGripperRetargeterCfg
 from .xr_se3_abs_retargeter import XRSe3AbsRetargeter, XRSe3AbsRetargeterCfg
 from .xr_se3_rel_retargeter import XRSe3RelRetargeter, XRSe3RelRetargeterCfg
+from .xr_t1_mink_ik_retargeter import XRT1MinkIKRetargeter, XRT1MinkIKRetargeterCfg
 
 __all__ = [
     "XRGripperRetargeter",
@@ -16,4 +17,6 @@ __all__ = [
     "XRSe3AbsRetargeterCfg",
     "XRSe3RelRetargeter",
     "XRSe3RelRetargeterCfg",
+    "XRT1MinkIKRetargeter",
+    "XRT1MinkIKRetargeterCfg",
 ]

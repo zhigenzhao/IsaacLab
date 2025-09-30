@@ -38,6 +38,8 @@ with contextlib.suppress(ModuleNotFoundError):
         XRSe3AbsRetargeterCfg,
         XRSe3RelRetargeter,
         XRSe3RelRetargeterCfg,
+        XRT1MinkIKRetargeter,
+        XRT1MinkIKRetargeterCfg,
     )
 
 with contextlib.suppress(ModuleNotFoundError):
@@ -74,6 +76,7 @@ with contextlib.suppress(NameError):
     RETARGETER_MAP[XRSe3RelRetargeterCfg] = XRSe3RelRetargeter
     RETARGETER_MAP[XRSe3AbsRetargeterCfg] = XRSe3AbsRetargeter
     RETARGETER_MAP[XRGripperRetargeterCfg] = XRGripperRetargeter
+    RETARGETER_MAP[XRT1MinkIKRetargeterCfg] = XRT1MinkIKRetargeter
 
 
 def create_teleop_device(

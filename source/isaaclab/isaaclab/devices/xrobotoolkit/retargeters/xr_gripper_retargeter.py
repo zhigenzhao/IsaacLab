@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from isaaclab.devices.retargeter_base import RetargeterBase, RetargeterCfg
+from isaaclab.devices.xrobotoolkit.xr_controller import XRControllerDevice
 
 
 @dataclass
@@ -96,7 +97,16 @@ class XRGripperRetargeter(RetargeterBase):
             torch.Tensor: 1D tensor containing gripper command value
         """
         # Get input value based on control hand and source
-        input_key = f"{self._control_hand}_{self._input_source}"
+        if self._control_hand == "left":
+            if self._input_source == "trigger":
+                input_key = XRControllerDevice.XRControllerDeviceValues.LEFT_TRIGGER.value
+            else:
+                input_key = XRControllerDevice.XRControllerDeviceValues.LEFT_GRIP.value
+        else:
+            if self._input_source == "trigger":
+                input_key = XRControllerDevice.XRControllerDeviceValues.RIGHT_TRIGGER.value
+            else:
+                input_key = XRControllerDevice.XRControllerDeviceValues.RIGHT_GRIP.value
         input_value = data.get(input_key, 0.0)
 
         # Process based on mode

@@ -12,6 +12,8 @@ from .retargeters import (
     XRSe3AbsRetargeterCfg,
     XRSe3RelRetargeter,
     XRSe3RelRetargeterCfg,
+    XRT1MinkIKRetargeter,
+    XRT1MinkIKRetargeterCfg,
 )
 from .xr_controller import XRControllerDevice, XRControllerDeviceCfg
 
@@ -24,4 +26,6 @@ __all__ = [
     "XRSe3AbsRetargeterCfg",
     "XRSe3RelRetargeter",
     "XRSe3RelRetargeterCfg",
+    "XRT1MinkIKRetargeter",
+    "XRT1MinkIKRetargeterCfg",
 ]

@@ -12,6 +12,7 @@ from scipy.spatial.transform import Rotation
 from typing import Any
 
 from isaaclab.devices.retargeter_base import RetargeterBase, RetargeterCfg
+from isaaclab.devices.xrobotoolkit.xr_controller import XRControllerDevice
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.markers.config import FRAME_MARKER_CFG
 
@@ -113,7 +114,10 @@ class XRSe3AbsRetargeter(RetargeterBase):
             torch.Tensor: 7D tensor containing position (xyz) and orientation (quaternion)
         """
         # Get controller pose based on control hand
-        controller_key = f"{self._control_hand}_controller"
+        if self._control_hand == "left":
+            controller_key = XRControllerDevice.XRControllerDeviceValues.LEFT_CONTROLLER.value
+        else:
+            controller_key = XRControllerDevice.XRControllerDeviceValues.RIGHT_CONTROLLER.value
         controller_pose = data.get(controller_key)
 
         if controller_pose is None:

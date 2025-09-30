@@ -6,3 +6,4 @@
 """Locomotion environments for legged robots."""
 
 from .tracking import *  # noqa
+from . import t1_teleop  # noqa
