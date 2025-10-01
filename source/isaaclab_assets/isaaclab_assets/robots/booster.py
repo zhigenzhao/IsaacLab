@@ -162,7 +162,7 @@ T1_CFG = ArticulationCfg(
 
 T1_REACH_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path="source/isaaclab_assets/isaaclab_assets/robots/USD/T1_7dof_arms_with_gripper_Fixed_upper_only_reducedcollision.usd",
+        usd_path="source/isaaclab_assets/isaaclab_assets/robots/USD/T1_7dof_arms_with_gripper_Fixed_upper_only.usd",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
@@ -226,10 +226,10 @@ T1_REACH_CFG = ArticulationCfg(
                 ".*_Hand_Roll",
             ],
             effort_limit_sim={
-                ".*_Shoulder_.*": 10.0,
-                ".*_Elbow_.*": 10.0,
-                ".*_Wrist_.*": 10.0,
-                ".*_Hand_Roll": 10.0,
+                ".*_Shoulder_.*": 200.0,
+                ".*_Elbow_.*": 200.0,
+                ".*_Wrist_.*": 200.0,
+                ".*_Hand_Roll": 200.0,
             },
             velocity_limit_sim={
                 ".*_Shoulder_.*": 18.84,
@@ -237,7 +237,7 @@ T1_REACH_CFG = ArticulationCfg(
                 ".*_Wrist_.*": 18.84,
                 ".*_Hand_Roll": 18.84,
             },
-            stiffness=50.0,
+            stiffness=2000.0,
             damping=3.0,
             armature={
                 ".*_Shoulder_.*": 0.01,

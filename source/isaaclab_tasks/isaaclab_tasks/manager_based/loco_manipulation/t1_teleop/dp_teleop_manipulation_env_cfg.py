@@ -136,7 +136,7 @@ class ActionCfg:
         ],
         scale=1.0,
         preserve_order=True,
-        use_default_offset=True
+        use_default_offset=False  # Mink IK outputs absolute positions, no offset needed
     )
 
 
@@ -287,7 +287,7 @@ class T1DPTeleopManipulationEnvCfg(ManagerBasedRLEnvCfg):
                     retargeters=[
                         XRT1MinkIKRetargeterCfg(
                             xml_path="source/isaaclab_assets/isaaclab_assets/robots/xmls/scene_t1_ik.xml",
-                            headless=True,
+                            headless=False,
                             ik_rate_hz=100.0,
                             collision_avoidance_distance=0.04,
                             collision_detection_distance=0.10,
