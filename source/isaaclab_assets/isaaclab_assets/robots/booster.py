@@ -162,7 +162,7 @@ T1_CFG = ArticulationCfg(
 
 T1_REACH_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path="source/isaaclab_assets/isaaclab_assets/robots/USD/T1_7dof_arms_with_gripper_Fixed_upper_only.usd",
+        usd_path="source/isaaclab_assets/isaaclab_assets/robots/USD/t1/t1_29dof_upper_body_physics_fixed.usd",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
@@ -177,6 +177,7 @@ T1_REACH_CFG = ArticulationCfg(
             enabled_self_collisions=True,
             solver_position_iteration_count=8,
             solver_velocity_iteration_count=4,
+            fix_root_link=True,
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
@@ -226,19 +227,19 @@ T1_REACH_CFG = ArticulationCfg(
                 ".*_Hand_Roll",
             ],
             effort_limit_sim={
-                ".*_Shoulder_.*": 200.0,
-                ".*_Elbow_.*": 200.0,
-                ".*_Wrist_.*": 200.0,
-                ".*_Hand_Roll": 200.0,
+                ".*_Shoulder_.*": 18.0,
+                ".*_Elbow_.*": 18.0,
+                ".*_Wrist_.*": 18.0,
+                ".*_Hand_Roll": 18.0,
             },
             velocity_limit_sim={
-                ".*_Shoulder_.*": 18.84,
-                ".*_Elbow_.*": 18.84,
-                ".*_Wrist_.*": 18.84,
-                ".*_Hand_Roll": 18.84,
+                ".*_Shoulder_.*": 60.0,
+                ".*_Elbow_.*": 60.0,
+                ".*_Wrist_.*": 60.0,
+                ".*_Hand_Roll": 60.0,
             },
-            stiffness=2000.0,
-            damping=3.0,
+            stiffness=200.0,
+            damping=10.0,
             armature={
                 ".*_Shoulder_.*": 0.01,
                 ".*_Elbow_.*": 0.01,
@@ -248,7 +249,107 @@ T1_REACH_CFG = ArticulationCfg(
         ),
     },
 )
-"""Configuration for the Booster T1 robot with fixed base (upper body only)."""
+"""Configuration for the Booster T1 robot with fixed base (upper body only, no gripper control)."""
+
+
+T1_GRASP_CFG = ArticulationCfg(
+    spawn=sim_utils.UsdFileCfg(
+        usd_path="source/isaaclab_assets/isaaclab_assets/robots/USD/t1/t1_with_7dof_arms_upper_body_gripper_mimic_joint_physics_fixed.usd",
+        activate_contact_sensors=True,
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=True,
+            solver_position_iteration_count=8,
+            solver_velocity_iteration_count=4,
+            fix_root_link=True,
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, 0.0, 0.7),
+        joint_pos={
+            "AAHead_yaw": 0.0,
+            "Head_pitch": 0.0,
+            ".*_Shoulder_Pitch": 0.2,
+            "Left_Shoulder_Roll": -1.35,
+            "Right_Shoulder_Roll": 1.35,
+            ".*_Elbow_Pitch": 0.0,
+            "Left_Elbow_Yaw": -0.5,
+            "Right_Elbow_Yaw": 0.5,
+            ".*_Wrist_Pitch": 0.0,
+            ".*_Wrist_Yaw": 0.0,
+            ".*_Hand_Roll": 0.0,
+            "Waist": 0.0,
+        },
+        joint_vel={".*": 0.0},
+    ),
+    soft_joint_pos_limit_factor=0.9,
+    actuators={
+        "head": ImplicitActuatorCfg(
+            effort_limit_sim=7,
+            velocity_limit_sim=12.56,
+            joint_names_expr=["Head_pitch", "AAHead_yaw"],
+            stiffness=20.0,
+            damping=0.2,
+            armature=0.01,
+        ),
+        "torso": ImplicitActuatorCfg(
+            joint_names_expr=["Waist"],
+            effort_limit_sim=30.0,
+            velocity_limit_sim=10.88,
+            stiffness=200.0,
+            damping=5.0,
+            armature=0.01,
+        ),
+        "arms": ImplicitActuatorCfg(
+            joint_names_expr=[
+                ".*_Shoulder_Pitch",
+                ".*_Shoulder_Roll",
+                ".*_Elbow_Pitch",
+                ".*_Elbow_Yaw",
+                ".*_Wrist_Pitch",
+                ".*_Wrist_Yaw",
+                ".*_Hand_Roll",
+            ],
+            effort_limit_sim={
+                ".*_Shoulder_.*": 18.0,
+                ".*_Elbow_.*": 18.0,
+                ".*_Wrist_.*": 18.0,
+                ".*_Hand_Roll": 18.0,
+            },
+            velocity_limit_sim={
+                ".*_Shoulder_.*": 60.0,
+                ".*_Elbow_.*": 60.0,
+                ".*_Wrist_.*": 60.0,
+                ".*_Hand_Roll": 60.0,
+            },
+            stiffness=200.0,
+            damping=5.0,
+            armature={
+                ".*_Shoulder_.*": 0.01,
+                ".*_Elbow_.*": 0.01,
+                ".*_Wrist_.*": 0.001,
+                ".*_Hand_Roll": 0.001,
+            },
+        ),
+        "grippers": ImplicitActuatorCfg(
+            joint_names_expr=["left_Link1", "right_Link1"],
+            effort_limit_sim=200,
+            velocity_limit_sim=60,
+            stiffness=200,
+            damping=0.1,
+            armature=0.001,
+        ),
+    },
+)
+"""Configuration for the Booster T1 robot with fixed base (upper body with gripper control)."""
 
 
 T1_MINIMAL_CFG = T1_CFG.copy()

@@ -7,7 +7,7 @@
 
 import gymnasium as gym
 
-from . import dp_teleop_env_cfg, dp_teleop_manipulation_env_cfg
+from . import dp_teleop_env_cfg, dp_teleop_manipulation_env_cfg, dp_teleop_reach_env_cfg
 from .tasks import dp_teleop_walk_to_target_cfg, dp_teleop_transport_box
 
 ##
@@ -38,5 +38,14 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": dp_teleop_manipulation_env_cfg.T1DPTeleopManipulationEnvCfg,
+    },
+)
+
+gym.register(
+    id="Isaac-T1-Teleop-Reach",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": dp_teleop_reach_env_cfg.T1DPTeleopReachEnvCfg,
     },
 )

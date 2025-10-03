@@ -3,42 +3,32 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-import tempfile
+"""T1 Teleoperation Reach Environment Configuration (Upper Body, No Grippers)."""
 
 import torch
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.utils import configclass
 
-from isaaclab.envs import ManagerBasedRLEnvCfg, ManagerBasedEnvCfg, ManagerBasedRLEnv
-from dataclasses import MISSING
+from isaaclab.envs import ManagerBasedRLEnvCfg, ManagerBasedRLEnv
 import isaaclab.sim as sim_utils
-from isaaclab.utils import configclass
-from isaaclab.assets import ArticulationCfg, AssetBaseCfg
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg, Articulation
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
-from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
-from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
-from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
-from isaaclab_assets.robots.booster import T1_GRASP_CFG  # isort: skip
-from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
+from isaaclab_assets.robots.booster import T1_REACH_CFG  # isort: skip
 
 from isaaclab.managers import RewardTermCfg as RewTerm
 import isaaclab.envs.mdp as mdp
 from .dp_teleop_commands_cfg import DummyCommandCfg
 from .dp_teleop_recorders import PostStepCommandRecorderCfg
 from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManagerCfg
-from isaaclab.managers import DatasetExportMode
-from isaaclab.assets import RigidObject, Articulation
-from isaaclab.managers import RecorderTermCfg
 from isaaclab.devices.device_base import DevicesCfg
 from isaaclab.devices.keyboard import Se3KeyboardCfg
 from isaaclab.devices.xrobotoolkit import (
     XRControllerDeviceCfg,
     XRT1MinkIKRetargeterCfg,
-    XRGripperRetargeterCfg,
 )
 from isaaclab.utils.noise import GaussianNoiseCfg as Gnoise
 
@@ -56,8 +46,8 @@ class SceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=3000.0),
     )
 
-    # robots
-    robot: ArticulationCfg = MISSING
+    # robot
+    robot: ArticulationCfg = T1_REACH_CFG
 
 
 PREP_STATE = ArticulationCfg.InitialStateCfg(
@@ -115,6 +105,7 @@ class CommandCfg:
 
 @configclass
 class ActionCfg:
+    """Action configuration for upper body only (no grippers)."""
     upper_joint_pos = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=[
@@ -139,20 +130,6 @@ class ActionCfg:
         preserve_order=True,
         use_default_offset=False  # Mink IK outputs absolute positions, no offset needed
     )
-    left_gripper = mdp.JointPositionActionCfg(
-        asset_name="robot",
-        joint_names=["left_Link1"],
-        scale=1.0,
-        preserve_order=True,
-        use_default_offset=False
-    )
-    right_gripper = mdp.JointPositionActionCfg(
-        asset_name="robot",
-        joint_names=["right_Link1"],
-        scale=1.0,
-        preserve_order=True,
-        use_default_offset=False
-    )
 
 
 @configclass
@@ -166,8 +143,8 @@ class RecorderCfg(ActionStateRecorderManagerCfg):
 
 
 @configclass
-class ManipulationObservationCfg:
-    """Observation specifications for manipulation (upper body only)."""
+class ReachObservationCfg:
+    """Observation specifications for reaching tasks (upper body only, no grippers)."""
 
     @configclass
     class PolicyCfg(ObsGroup):
@@ -207,8 +184,6 @@ class ManipulationObservationCfg:
                         "Right_Wrist_Yaw",
                         "Right_Hand_Roll",
                         "Waist",
-                        "left_Link1",
-                        "right_Link1",
                     ],
                     preserve_order=True,
                 )
@@ -239,8 +214,6 @@ class ManipulationObservationCfg:
                         "Right_Wrist_Yaw",
                         "Right_Hand_Roll",
                         "Waist",
-                        "left_Link1",
-                        "right_Link1",
                     ],
                     preserve_order=True,
                 )
@@ -260,9 +233,11 @@ class ManipulationObservationCfg:
 
 
 @configclass
-class T1DPTeleopManipulationEnvCfg(ManagerBasedRLEnvCfg):
+class T1DPTeleopReachEnvCfg(ManagerBasedRLEnvCfg):
+    """T1 teleoperation environment configuration for reaching tasks (no gripper control)."""
+
     scene: SceneCfg = SceneCfg(num_envs=1, env_spacing=2.5, replicate_physics=False)
-    observations: ManipulationObservationCfg = ManipulationObservationCfg()
+    observations: ReachObservationCfg = ReachObservationCfg()
     actions: ActionCfg = ActionCfg()
     terminations: TerminationCfg = TerminationCfg()
     events: EventCfg = EventCfg()
@@ -278,31 +253,30 @@ class T1DPTeleopManipulationEnvCfg(ManagerBasedRLEnvCfg):
         self.decimation = 10
         self.sim.render_interval = 8
         self.episode_length_s = 1000000.0
-        self.scene.robot = T1_GRASP_CFG.replace(
+        self.scene.robot = T1_REACH_CFG.replace(
             prim_path="{ENV_REGEX_NS}/Robot"
         )
 
         self.sim.physx.solver_type = 1
-        import isaaclab.sim as sim_utils
         self.sim.render = sim_utils.RenderCfg(
             enable_dlssg=True,
             dlss_mode=0,  # Set DLSS to Performance Mode
             rendering_mode="balanced"
         )
 
-        # Configure teleoperation devices
+        # Configure teleoperation devices (no gripper retargeters)
         self.teleop_devices = DevicesCfg(
             devices={
                 # XRoboToolkit VR controller device
                 "xr_controller": XRControllerDeviceCfg(
                     # Controller settings
                     control_mode="dual_hand",      # Use both controllers for T1 upper body
-                    gripper_source="trigger",       # Trigger for gripper activation
+                    gripper_source="trigger",       # Not used but required field
                     pos_sensitivity=1.0,            # Controller position sensitivity
                     rot_sensitivity=1.0,            # Controller rotation sensitivity
                     deadzone_threshold=0.01,        # Minimum movement threshold
 
-                    # Mink IK retargeter for T1 upper body control
+                    # Mink IK retargeter for T1 upper body control (no gripper control)
                     retargeters=[
                         XRT1MinkIKRetargeterCfg(
                             xml_path="source/isaaclab_assets/isaaclab_assets/robots/xmls/scene_t1_ik.xml",
@@ -312,27 +286,6 @@ class T1DPTeleopManipulationEnvCfg(ManagerBasedRLEnvCfg):
                             collision_detection_distance=0.10,
                             velocity_limit_factor=0.7,
                             output_joint_positions_only=True,  # Output only 16 joint positions
-                            sim_device=self.sim.device,
-                        ),
-                        # Left gripper retargeter (trigger-based continuous control)
-                        # Trigger 0.0 → 1.57 rad (open), Trigger 1.0 → -1.57 rad (closed)
-                        XRGripperRetargeterCfg(
-                            control_hand="left",
-                            input_source="trigger",
-                            mode="continuous",
-                            invert=False,
-                            open_value=1.57,  # 90 degrees
-                            closed_value=-1.57,  # -90 degrees
-                            sim_device=self.sim.device,
-                        ),
-                        # Right gripper retargeter (trigger-based continuous control)
-                        XRGripperRetargeterCfg(
-                            control_hand="right",
-                            input_source="trigger",
-                            mode="continuous",
-                            invert=False,
-                            open_value=1.57,  # 90 degrees
-                            closed_value=-1.57,  # -90 degrees
                             sim_device=self.sim.device,
                         ),
                     ],
