@@ -254,7 +254,7 @@ T1_REACH_CFG = ArticulationCfg(
 
 T1_GRASP_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path="source/isaaclab_assets/isaaclab_assets/robots/USD/t1/t1_with_7dof_arms_upper_body_gripper_mimic_joint_physics_fixed.usd",
+        usd_path="source/isaaclab_assets/isaaclab_assets/robots/USD/t1/t1_with_7dof_arms_upper_body_gripper_mimic_joint.usd",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
@@ -287,6 +287,7 @@ T1_GRASP_CFG = ArticulationCfg(
             ".*_Wrist_Yaw": 0.0,
             ".*_Hand_Roll": 0.0,
             "Waist": 0.0,
+            ".*_Link.*": 0.0,
         },
         joint_vel={".*": 0.0},
     ),
@@ -341,9 +342,17 @@ T1_GRASP_CFG = ArticulationCfg(
         ),
         "grippers": ImplicitActuatorCfg(
             joint_names_expr=["left_Link1", "right_Link1"],
-            effort_limit_sim=200,
+            effort_limit_sim=50,
             velocity_limit_sim=60,
-            stiffness=200,
+            stiffness=50,
+            damping=0.1,
+            armature=0.001,
+        ),
+        "grippers_mimic": ImplicitActuatorCfg(
+            joint_names_expr=["left_Link11", "left_Link2", "left_Link22", "right_Link11", "right_Link2", "right_Link22"],
+            effort_limit_sim=50,
+            velocity_limit_sim=60,
+            stiffness=50,
             damping=0.1,
             armature=0.001,
         ),

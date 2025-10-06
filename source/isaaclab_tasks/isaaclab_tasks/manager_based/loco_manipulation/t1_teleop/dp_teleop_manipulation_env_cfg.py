@@ -208,7 +208,9 @@ class ManipulationObservationCfg:
                         "Right_Hand_Roll",
                         "Waist",
                         "left_Link1",
+                        "left_Link2",
                         "right_Link1",
+                        "right_Link2",
                     ],
                     preserve_order=True,
                 )
@@ -240,7 +242,9 @@ class ManipulationObservationCfg:
                         "Right_Hand_Roll",
                         "Waist",
                         "left_Link1",
+                        "left_Link2",
                         "right_Link1",
+                        "right_Link2",
                     ],
                     preserve_order=True,
                 )
@@ -307,7 +311,7 @@ class T1DPTeleopManipulationEnvCfg(ManagerBasedRLEnvCfg):
                         XRT1MinkIKRetargeterCfg(
                             xml_path="source/isaaclab_assets/isaaclab_assets/robots/xmls/scene_t1_ik.xml",
                             headless=False,
-                            ik_rate_hz=100.0,
+                            ik_rate_hz=90.0,
                             collision_avoidance_distance=0.04,
                             collision_detection_distance=0.10,
                             velocity_limit_factor=0.7,
@@ -320,9 +324,9 @@ class T1DPTeleopManipulationEnvCfg(ManagerBasedRLEnvCfg):
                             control_hand="left",
                             input_source="trigger",
                             mode="continuous",
-                            invert=False,
-                            open_value=1.57,  # 90 degrees
-                            closed_value=-1.57,  # -90 degrees
+                            invert=True,
+                            open_value=-0.523,  # -30 degrees
+                            closed_value=1.57,  # 90 degrees
                             sim_device=self.sim.device,
                         ),
                         # Right gripper retargeter (trigger-based continuous control)
@@ -330,9 +334,9 @@ class T1DPTeleopManipulationEnvCfg(ManagerBasedRLEnvCfg):
                             control_hand="right",
                             input_source="trigger",
                             mode="continuous",
-                            invert=False,
-                            open_value=1.57,  # 90 degrees
-                            closed_value=-1.57,  # -90 degrees
+                            invert=True,
+                            open_value=-0.523,  # -30 degrees
+                            closed_value=1.57,  # 90 degrees
                             sim_device=self.sim.device,
                         ),
                     ],
