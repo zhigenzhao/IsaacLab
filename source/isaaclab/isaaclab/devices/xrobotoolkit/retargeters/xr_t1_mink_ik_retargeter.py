@@ -251,6 +251,7 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         # Measured joint positions from simulation (for state sync)
         self.measured_joint_positions = None
         self.force_sync = False
+        self.sync_complete = True  # Flag to indicate sync is complete
 
         # Start IK solver thread
         self._start_ik()
@@ -297,10 +298,15 @@ class XRT1MinkIKRetargeter(RetargeterBase):
 
         while self.is_running and not self.shutdown_requested:
             with self.datalock:
-                # Force sync if requested (e.g., on reset)
+                # Force sync if requested (e.g., on reset or grip press)
                 if self.force_sync and self.measured_joint_positions is not None:
                     self.set_qpos_upper(self.measured_joint_positions)
+                    # Update mocap targets to match the actual hand positions in the synced state
+                    # This prevents jumps when reframe_mocap calculates the offset
+                    ik.move_mocap_to_frame(self.mj_model, self.mj_data, "left_hand_target", "left_hand", "site")
+                    ik.move_mocap_to_frame(self.mj_model, self.mj_data, "right_hand_target", "right_hand", "site")
                     self.force_sync = False
+                    self.sync_complete = True
 
                 # Read mocap targets
                 lh_T = ik.SE3.from_mocap_name(self.mj_model, self.mj_data, "left_hand_target")
@@ -579,9 +585,18 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         # Handle left hand activation
         if left_grip > 0.5 and left_pose is not None:
             if not self.lhold:
-                # Sync internal state on grip press transition
+                # Request state sync on grip press transition
+                # The sync will be performed by the IK solver thread
                 if self.measured_joint_positions is not None:
-                    self.set_qpos_upper(self.measured_joint_positions)
+                    self.sync_complete = False
+                    self.force_sync = True
+                    # Wait for sync to complete before reframing mocap
+                    # This ensures the offset is calculated with the synced state
+                    import time
+                    timeout = 0.1  # 100ms timeout
+                    start_time = time.time()
+                    while not self.sync_complete and (time.time() - start_time) < timeout:
+                        time.sleep(0.001)  # 1ms sleep
                 self.reframe_mocap("left_hand_target", left_pose_mj)
                 self.lhold = True
             self.sync_mocap("left_hand_target", left_pose_mj)
@@ -592,9 +607,18 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         # Handle right hand activation
         if right_grip > 0.5 and right_pose is not None:
             if not self.rhold:
-                # Sync internal state on grip press transition
+                # Request state sync on grip press transition
+                # The sync will be performed by the IK solver thread
                 if self.measured_joint_positions is not None:
-                    self.set_qpos_upper(self.measured_joint_positions)
+                    self.sync_complete = False
+                    self.force_sync = True
+                    # Wait for sync to complete before reframing mocap
+                    # This ensures the offset is calculated with the synced state
+                    import time
+                    timeout = 0.1  # 100ms timeout
+                    start_time = time.time()
+                    while not self.sync_complete and (time.time() - start_time) < timeout:
+                        time.sleep(0.001)  # 1ms sleep
                 self.reframe_mocap("right_hand_target", right_pose_mj)
                 self.rhold = True
             self.sync_mocap("right_hand_target", right_pose_mj)
