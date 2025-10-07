@@ -76,6 +76,7 @@ class XRControllerDevice(DeviceBase):
         """
         LEFT_CONTROLLER = "left_controller"      # Left controller pose [x, y, z, qx, qy, qz, qw]
         RIGHT_CONTROLLER = "right_controller"    # Right controller pose [x, y, z, qx, qy, qz, qw]
+        HEADSET = "headset"                      # Headset pose [x, y, z, qx, qy, qz, qw]
         LEFT_TRIGGER = "left_trigger"            # Left trigger value [0-1]
         RIGHT_TRIGGER = "right_trigger"          # Right trigger value [0-1]
         LEFT_GRIP = "left_grip"                  # Left grip value [0-1]
@@ -192,6 +193,7 @@ class XRControllerDevice(DeviceBase):
             Dictionary containing:
                 - left_controller: [x, y, z, qw, qx, qy, qz] pose array
                 - right_controller: [x, y, z, qw, qx, qy, qz] pose array
+                - headset: [x, y, z, qw, qx, qy, qz] pose array
                 - left_trigger: float [0-1]
                 - right_trigger: float [0-1]
                 - left_grip: float [0-1]
@@ -203,6 +205,7 @@ class XRControllerDevice(DeviceBase):
             # Get controller poses
             left_pose = np.array(xrt.get_left_controller_pose(), dtype=np.float32)
             right_pose = np.array(xrt.get_right_controller_pose(), dtype=np.float32)
+            headset_pose = np.array(xrt.get_headset_pose(), dtype=np.float32)
 
             # Get input states
             left_trigger = xrt.get_left_trigger()
@@ -228,6 +231,7 @@ class XRControllerDevice(DeviceBase):
             data = {
                 self.XRControllerDeviceValues.LEFT_CONTROLLER.value: left_pose,
                 self.XRControllerDeviceValues.RIGHT_CONTROLLER.value: right_pose,
+                self.XRControllerDeviceValues.HEADSET.value: headset_pose,
                 self.XRControllerDeviceValues.LEFT_TRIGGER.value: left_trigger,
                 self.XRControllerDeviceValues.RIGHT_TRIGGER.value: right_trigger,
                 self.XRControllerDeviceValues.LEFT_GRIP.value: left_grip,

@@ -132,6 +132,21 @@ class XRT1MinkIKRetargeterCfg(RetargeterCfg):
     """Reference frame for relative control. Controller movements are interpreted relative to this frame.
     Common values: 'trunk' (robot's torso), 'world' (global frame)."""
 
+    enable_head_tracking: bool = True
+    """If True, use headset orientation to control head joints directly (bypassing IK)."""
+
+    head_yaw_scale: float = 1.0
+    """Scale factor for mapping headset yaw to robot head yaw joint."""
+
+    head_pitch_scale: float = 1.0
+    """Scale factor for mapping headset pitch to robot head pitch joint."""
+
+    head_yaw_clamp_deg: tuple[float, float] = (-90.0, 90.0)
+    """Clamp range for head yaw in degrees (min, max)."""
+
+    head_pitch_clamp_deg: tuple[float, float] = (-50.0, 50.0)
+    """Clamp range for head pitch in degrees (min, max)."""
+
 
 class XRT1MinkIKRetargeter(RetargeterBase):
     """Retargets XR controller poses to T1 humanoid arm joint positions using Mink IK.
@@ -169,6 +184,13 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         self._headless = cfg.headless
         self._ik_rate_hz = cfg.ik_rate_hz
         self._output_joint_positions_only = cfg.output_joint_positions_only
+
+        # Head tracking configuration
+        self._enable_head_tracking = cfg.enable_head_tracking
+        self._head_yaw_scale = cfg.head_yaw_scale
+        self._head_pitch_scale = cfg.head_pitch_scale
+        self._head_yaw_clamp_deg = cfg.head_yaw_clamp_deg
+        self._head_pitch_clamp_deg = cfg.head_pitch_clamp_deg
 
         # Initialize MuJoCo model
         self.mj_model = mj.MjModel.from_xml_path(self._xml_path)
@@ -273,6 +295,11 @@ class XRT1MinkIKRetargeter(RetargeterBase):
 
         # Reference frame for relative control
         self._reference_frame = cfg.reference_frame
+
+        # Head tracking state
+        self._head_tracking_warned = False  # Flag to avoid spamming warnings
+        self._current_head_yaw = 0.0  # Current head yaw target (radians)
+        self._current_head_pitch = 0.0  # Current head pitch target (radians)
 
         # Start IK solver thread
         self._start_ik()
@@ -635,6 +662,67 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         g_bm = g_wb.inverse().multiply(g_wm)
         return np.concatenate([g_bm.wxyz_xyz[4:], g_bm.wxyz_xyz[:4]])
 
+    def _compute_head_joints_from_headset(self, headset_pose: np.ndarray) -> tuple[float, float]:
+        """Compute head yaw and pitch joint angles from headset pose.
+
+        Uses the same euler angle conversion as XRoboToolkit dynamixel_head_controller.
+
+        Args:
+            headset_pose: Headset pose [x, y, z, qx, qy, qz, qw] from XR device
+
+        Returns:
+            Tuple of (yaw_rad, pitch_rad) for AAHead_yaw and Head_pitch joints
+
+        Raises:
+            ValueError: If quaternion has zero norm (invalid headset data)
+        """
+        # Extract quaternion from XR format [x, y, z, qx, qy, qz, qw]
+        quat_xyzw = np.array([headset_pose[3], headset_pose[4], headset_pose[5], headset_pose[6]])
+
+        # Validate quaternion before conversion
+        quat_norm = np.linalg.norm(quat_xyzw)
+        if quat_norm < QUAT_NORM_THRESHOLD:
+            raise ValueError(f"Invalid headset quaternion (norm={quat_norm:.6f}). Headset data not ready.")
+
+        # Normalize quaternion
+        quat_xyzw = quat_xyzw / quat_norm
+
+        # Convert quaternion to Euler angles
+        # Meshcat's 'rzxy' (rotating frame, Z-X-Y order) is equivalent to scipy's 'zxy' (intrinsic)
+        # Reference: dynamixel_head_controller.py:94 uses tf.euler_from_matrix(rot_matrix, "rzxy")
+        #   where euler[1] = pitch (X rotation), euler[2] = yaw (Y rotation)
+        euler = Rotation.from_quat(quat_xyzw).as_euler('zxy')
+        pitch_raw = euler[1]  # X rotation (radians)
+        yaw_raw = euler[2]    # Y rotation (radians)
+
+        # Convert to degrees for processing
+        yaw_deg = np.rad2deg(yaw_raw)
+        pitch_deg = np.rad2deg(pitch_raw)
+
+        # Apply wrapping logic from dynamixel_head_controller.py:134-144
+        # Yaw wrapping
+        if yaw_deg > 90.0 and yaw_deg < 180.0:
+            yaw_deg -= 180.0
+        if yaw_deg < -90.0:
+            yaw_deg = 180.0 + yaw_deg
+
+        # Pitch wrapping
+        if pitch_deg < -90.0:
+            pitch_deg = -pitch_deg - 180.0
+        if pitch_deg > 90.0:
+            pitch_deg = 180.0 - pitch_deg
+
+        # Apply scaling
+        yaw_deg *= self._head_yaw_scale
+        pitch_deg *= self._head_pitch_scale
+
+        # Clamp to joint limits
+        yaw_deg = np.clip(yaw_deg, self._head_yaw_clamp_deg[0], self._head_yaw_clamp_deg[1])
+        pitch_deg = np.clip(pitch_deg, self._head_pitch_clamp_deg[0], self._head_pitch_clamp_deg[1])
+
+        # Convert back to radians
+        return np.deg2rad(yaw_deg), np.deg2rad(pitch_deg)
+
     def retarget(self, data: dict[str, Any]) -> torch.Tensor:
         """Convert XR controller data to T1 humanoid arm joint commands.
 
@@ -715,8 +803,33 @@ class XRT1MinkIKRetargeter(RetargeterBase):
             self.rhold = False
             self.move_mocap_to("right_hand_target", "right_hand")
 
-        # Get IK solution
+        # Update head tracking from headset if enabled
+        if self._enable_head_tracking:
+            headset_pose = data.get(XRControllerDevice.XRControllerDeviceValues.HEADSET.value)
+            if headset_pose is not None:
+                try:
+                    # Convert headset pose to head joint angles
+                    yaw_rad, pitch_rad = self._compute_head_joints_from_headset(headset_pose)
+                    # Store head targets separately (not from IK solver)
+                    self._current_head_yaw = yaw_rad
+                    self._current_head_pitch = pitch_rad
+                    # Reset warning flag on success
+                    if self._head_tracking_warned:
+                        print(f"Head tracking resumed successfully. Yaw: {np.rad2deg(yaw_rad):.1f}°, Pitch: {np.rad2deg(pitch_rad):.1f}°")
+                        self._head_tracking_warned = False
+                except Exception as e:
+                    # Fall back to zero/default head position if headset tracking fails
+                    # Only warn once to avoid spamming console
+                    if not self._head_tracking_warned:
+                        print(f"Warning: Head tracking failed: {e}. Using default head position.")
+                        self._head_tracking_warned = True
+
+        # Get IK solution for arms (we'll override head separately)
         qpos_upper = self.get_qpos_upper()
+
+        # Always override head joints with tracked values (independent of IK solver)
+        qpos_upper[0] = self._current_head_yaw   # AAHead_yaw
+        qpos_upper[1] = self._current_head_pitch  # Head_pitch
 
         # Return based on configuration
         if self._output_joint_positions_only:
