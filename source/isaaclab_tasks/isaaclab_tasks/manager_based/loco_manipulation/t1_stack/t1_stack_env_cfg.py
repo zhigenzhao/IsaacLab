@@ -25,14 +25,12 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.noise import GaussianNoiseCfg as Gnoise
 from isaaclab.devices.device_base import DevicesCfg
 from isaaclab.devices.keyboard import Se3KeyboardCfg
-from isaaclab.devices.xrobotoolkit import (
-    XRControllerDeviceCfg,
-    XRT1MinkIKRetargeterCfg,
-    XRGripperRetargeterCfg,
-)
 
 import isaaclab.envs.mdp as mdp
 from . import t1_stack_mdp
+from ..t1_common.joint_names import T1_UPPER_BODY_JOINTS, T1_UPPER_BODY_WITH_GRIPPERS
+from ..t1_common.xr_controller_cfg import create_t1_xr_controller_cfg
+from ..t1_common.physics_constants import MANIPULATION_OBJECT_PROPERTIES, MANIPULATION_PHYSX_SETTINGS
 
 ##
 # Pre-defined configs
@@ -81,8 +79,8 @@ PREP_STATE = {
     "Left_Shoulder_Roll": -1.55,
     "Right_Shoulder_Roll": 1.55,
     ".*_Elbow_Pitch": 0.0,
-    "Left_Elbow_Yaw": 0.0,
-    "Right_Elbow_Yaw": 0.0,
+    "Left_Elbow_Yaw": -0.5,
+    "Right_Elbow_Yaw": 0.5,
     ".*_Wrist_Pitch": 0.0,
     ".*_Wrist_Yaw": 0.0,
     ".*_Hand_Roll": 0.0,
@@ -111,24 +109,7 @@ class ActionsCfg:
 
     upper_joint_pos = mdp.JointPositionActionCfg(
         asset_name="robot",
-        joint_names=[
-            "AAHead_yaw",
-            "Head_pitch",
-            "Left_Shoulder_Pitch",
-            "Left_Shoulder_Roll",
-            "Left_Elbow_Pitch",
-            "Left_Elbow_Yaw",
-            "Left_Wrist_Pitch",
-            "Left_Wrist_Yaw",
-            "Left_Hand_Roll",
-            "Right_Shoulder_Pitch",
-            "Right_Shoulder_Roll",
-            "Right_Elbow_Pitch",
-            "Right_Elbow_Yaw",
-            "Right_Wrist_Pitch",
-            "Right_Wrist_Yaw",
-            "Right_Hand_Roll"
-        ],
+        joint_names=T1_UPPER_BODY_JOINTS,
         scale=1.0,
         preserve_order=True,
         use_default_offset=False
@@ -174,29 +155,7 @@ class ObservationsCfg:
             params={
                 "asset_cfg": SceneEntityCfg(
                     "robot",
-                    joint_names=[
-                        "AAHead_yaw",
-                        "Head_pitch",
-                        "Left_Shoulder_Pitch",
-                        "Left_Shoulder_Roll",
-                        "Left_Elbow_Pitch",
-                        "Left_Elbow_Yaw",
-                        "Left_Wrist_Pitch",
-                        "Left_Wrist_Yaw",
-                        "Left_Hand_Roll",
-                        "Right_Shoulder_Pitch",
-                        "Right_Shoulder_Roll",
-                        "Right_Elbow_Pitch",
-                        "Right_Elbow_Yaw",
-                        "Right_Wrist_Pitch",
-                        "Right_Wrist_Yaw",
-                        "Right_Hand_Roll",
-                        "Waist",
-                        "left_Link1",
-                        "left_Link2",
-                        "right_Link1",
-                        "right_Link2",
-                    ],
+                    joint_names=T1_UPPER_BODY_WITH_GRIPPERS,
                     preserve_order=True,
                 )
             },
@@ -208,29 +167,7 @@ class ObservationsCfg:
             params={
                 "asset_cfg": SceneEntityCfg(
                     "robot",
-                    joint_names=[
-                        "AAHead_yaw",
-                        "Head_pitch",
-                        "Left_Shoulder_Pitch",
-                        "Left_Shoulder_Roll",
-                        "Left_Elbow_Pitch",
-                        "Left_Elbow_Yaw",
-                        "Left_Wrist_Pitch",
-                        "Left_Wrist_Yaw",
-                        "Left_Hand_Roll",
-                        "Right_Shoulder_Pitch",
-                        "Right_Shoulder_Roll",
-                        "Right_Elbow_Pitch",
-                        "Right_Elbow_Yaw",
-                        "Right_Wrist_Pitch",
-                        "Right_Wrist_Yaw",
-                        "Right_Hand_Roll",
-                        "Waist",
-                        "left_Link1",
-                        "left_Link2",
-                        "right_Link1",
-                        "right_Link2",
-                    ],
+                    joint_names=T1_UPPER_BODY_WITH_GRIPPERS,
                     preserve_order=True,
                 )
             },
@@ -406,23 +343,11 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
         )
 
         # Physics settings for stacking
-        self.sim.physx.bounce_threshold_velocity = 0.2
-        self.sim.physx.gpu_found_lost_aggregate_pairs_capacity = 1024 * 1024 * 4
-        self.sim.physx.gpu_total_aggregate_pairs_capacity = 16 * 1024
-        self.sim.physx.friction_correlation_distance = 0.00625
+        for key, value in MANIPULATION_PHYSX_SETTINGS.items():
+            setattr(self.sim.physx, key, value)
 
         # Set T1 robot
         self.scene.robot = T1_GRASP_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-
-        # Cube properties
-        cube_properties = RigidBodyPropertiesCfg(
-            solver_position_iteration_count=16,
-            solver_velocity_iteration_count=1,
-            max_angular_velocity=1000.0,
-            max_linear_velocity=1000.0,
-            max_depenetration_velocity=5.0,
-            disable_gravity=False,
-        )
 
         # Add cubes to scene (on table surface at z=1.0703)
         self.scene.cube_1 = RigidObjectCfg(
@@ -431,7 +356,7 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
             spawn=UsdFileCfg(
                 usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/blue_block.usd",
                 scale=(1.0, 1.0, 1.0),
-                rigid_props=cube_properties,
+                rigid_props=MANIPULATION_OBJECT_PROPERTIES,
             ),
         )
         self.scene.cube_2 = RigidObjectCfg(
@@ -440,7 +365,7 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
             spawn=UsdFileCfg(
                 usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/red_block.usd",
                 scale=(1.0, 1.0, 1.0),
-                rigid_props=cube_properties,
+                rigid_props=MANIPULATION_OBJECT_PROPERTIES,
             ),
         )
         self.scene.cube_3 = RigidObjectCfg(
@@ -449,7 +374,7 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
             spawn=UsdFileCfg(
                 usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/green_block.usd",
                 scale=(1.0, 1.0, 1.0),
-                rigid_props=cube_properties,
+                rigid_props=MANIPULATION_OBJECT_PROPERTIES,
             ),
         )
 
@@ -458,47 +383,7 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
         # Configure XR teleoperation
         self.teleop_devices = DevicesCfg(
             devices={
-                "xr_controller": XRControllerDeviceCfg(
-                    control_mode="dual_hand",
-                    gripper_source="trigger",
-                    pos_sensitivity=1.0,
-                    rot_sensitivity=1.0,
-                    deadzone_threshold=0.01,
-
-                    retargeters=[
-                        XRT1MinkIKRetargeterCfg(
-                            xml_path="source/isaaclab_assets/isaaclab_assets/robots/xmls/scene_t1_ik.xml",
-                            headless=False,
-                            ik_rate_hz=90.0,
-                            collision_avoidance_distance=0.04,
-                            collision_detection_distance=0.10,
-                            velocity_limit_factor=0.7,
-                            output_joint_positions_only=True,
-                            sim_device=self.sim.device,
-                        ),
-                        XRGripperRetargeterCfg(
-                            control_hand="left",
-                            input_source="trigger",
-                            mode="binary",
-                            binary_threshold=0.5,
-                            invert=True,
-                            open_value=-0.523,
-                            closed_value=1.57,
-                            sim_device=self.sim.device,
-                        ),
-                        XRGripperRetargeterCfg(
-                            control_hand="right",
-                            input_source="trigger",
-                            mode="binary",
-                            binary_threshold=0.5,
-                            invert=True,
-                            open_value=-0.523,
-                            closed_value=1.57,
-                            sim_device=self.sim.device,
-                        ),
-                    ],
-                    sim_device=self.sim.device,
-                ),
+                "xr_controller": create_t1_xr_controller_cfg(sim_device=self.sim.device),
                 "keyboard": Se3KeyboardCfg(
                     pos_sensitivity=0.05,
                     rot_sensitivity=0.05,

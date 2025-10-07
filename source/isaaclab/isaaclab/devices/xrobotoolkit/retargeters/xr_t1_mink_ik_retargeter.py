@@ -6,11 +6,25 @@
 """XRoboToolkit controller retargeter using Mink IK for T1 humanoid arm control."""
 
 import numpy as np
+import time
 import torch
 from dataclasses import dataclass
+from scipy.spatial.transform import Rotation
 from typing import Any
 
 from isaaclab.devices.retargeter_base import RetargeterBase, RetargeterCfg
+
+# Default coordinate transformation from headset frame to world frame
+R_HEADSET_TO_WORLD = np.array([
+    [0, 0, -1],
+    [-1, 0, 0],
+    [0, 1, 0],
+])
+
+# Constants for state synchronization
+QUAT_NORM_THRESHOLD = 1e-6  # Minimum quaternion norm for validation
+SYNC_TIMEOUT_SECONDS = 0.1  # Timeout for waiting on state sync completion
+SYNC_POLL_INTERVAL_SECONDS = 0.001  # Polling interval for sync completion check
 
 # Import Mink IK dependencies
 try:
@@ -113,6 +127,10 @@ class XRT1MinkIKRetargeterCfg(RetargeterCfg):
 
     output_joint_positions_only: bool = False
     """If True, output only the 16 joint positions. If False, output 30 elements including hand targets."""
+
+    reference_frame: str = "trunk"
+    """Reference frame for relative control. Controller movements are interpreted relative to this frame.
+    Common values: 'trunk' (robot's torso), 'world' (global frame)."""
 
 
 class XRT1MinkIKRetargeter(RetargeterBase):
@@ -252,6 +270,9 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         self.measured_joint_positions = None
         self.force_sync = False
         self.sync_complete = True  # Flag to indicate sync is complete
+
+        # Reference frame for relative control
+        self._reference_frame = cfg.reference_frame
 
         # Start IK solver thread
         self._start_ik()
@@ -433,6 +454,83 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         """
         ik.move_mocap_to_frame(self.mj_model, self.mj_data, name, target_site_name, "site")
 
+    def _transform_world_to_site(self, wxyz_xyz_world: np.ndarray, site_name: str) -> np.ndarray:
+        """Transform a pose from world frame to site-relative frame.
+
+        Args:
+            wxyz_xyz_world: Pose in world frame [qw, qx, qy, qz, x, y, z]
+            site_name: Name of the site to use as reference frame
+
+        Returns:
+            Pose in site-relative frame [qw, qx, qy, qz, x, y, z]
+
+        Raises:
+            ValueError: If site_name does not exist in the model
+        """
+        # Validate site exists
+        try:
+            site_id = self.mj_model.site(site_name).id
+        except KeyError:
+            raise ValueError(f"Site '{site_name}' not found in MuJoCo model")
+
+        site_xpos = self.mj_data.site_xpos[site_id]
+        site_xmat = self.mj_data.site_xmat[site_id].reshape(3, 3)
+
+        # Extract world pose
+        quat_world = wxyz_xyz_world[:4]
+        pos_world = wxyz_xyz_world[4:]
+
+        # Transform position to site frame
+        pos_rel = site_xmat.T @ (pos_world - site_xpos)
+
+        # Transform orientation to site frame
+        site_quat = mat_to_quat(site_xmat)
+        site_quat_inv = np.array([site_quat[0], -site_quat[1], -site_quat[2], -site_quat[3]])
+        quat_rel = quat_multiply(site_quat_inv, quat_world)
+
+        return np.concatenate([quat_rel, pos_rel])
+
+    def _transform_xr_pose_to_reference_frame(self, xr_pose: np.ndarray) -> np.ndarray:
+        """Transform XR controller pose from headset frame to reference frame.
+
+        This method handles the full transformation chain:
+        1. Headset frame → World frame (using R_HEADSET_TO_WORLD)
+        2. World frame → Reference frame (using _transform_world_to_site)
+
+        Args:
+            xr_pose: Pose in XR format [x, y, z, qx, qy, qz, qw] in headset frame
+
+        Returns:
+            Pose in MuJoCo format [qw, qx, qy, qz, x, y, z] in reference frame
+        """
+        # Extract position and quaternion from XR format
+        pos_headset = xr_pose[:3]
+        quat_xr = xr_pose[3:]  # [qx, qy, qz, qw]
+        quat_headset = np.array([quat_xr[3], quat_xr[0], quat_xr[1], quat_xr[2]])  # [qw, qx, qy, qz]
+
+        # Check for valid quaternion (non-zero norm)
+        quat_norm = np.linalg.norm(quat_headset)
+        if quat_norm < QUAT_NORM_THRESHOLD:
+            # Invalid quaternion, use identity
+            quat_headset = np.array([1.0, 0.0, 0.0, 0.0])
+        else:
+            quat_headset = quat_headset / quat_norm  # Normalize
+
+        # Transform position from headset to world
+        pos_world = R_HEADSET_TO_WORLD @ pos_headset
+
+        # Transform orientation from headset to world
+        R_quat_headset = Rotation.from_quat([quat_headset[1], quat_headset[2], quat_headset[3], quat_headset[0]])  # scipy uses [x,y,z,w]
+        R_world = Rotation.from_matrix(R_HEADSET_TO_WORLD) * R_quat_headset
+        quat_world_scipy = R_world.as_quat()  # [x, y, z, w]
+        quat_world = np.array([quat_world_scipy[3], quat_world_scipy[0], quat_world_scipy[1], quat_world_scipy[2]])  # [qw, qx, qy, qz]
+
+        # Create world frame pose in MuJoCo format
+        pose_mj_world = np.concatenate([quat_world, pos_world])
+
+        # Transform to reference frame
+        return self._transform_world_to_site(pose_mj_world, self._reference_frame)
+
     def get_qpos_upper(self) -> np.ndarray:
         """Get current T1 upper body joint positions.
 
@@ -568,19 +666,14 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         left_pose = data.get(XRControllerDevice.XRControllerDeviceValues.LEFT_CONTROLLER.value)
         right_pose = data.get(XRControllerDevice.XRControllerDeviceValues.RIGHT_CONTROLLER.value)
 
-        # Convert XR controller poses to MuJoCo format [qw, qx, qy, qz, x, y, z]
-        # XR format: [x, y, z, qx, qy, qz, qw]
+        # Transform XR controller poses to reference frame
+        # XR format: [x, y, z, qx, qy, qz, qw] in headset frame
+        # Output: [qw, qx, qy, qz, x, y, z] in reference frame (e.g., trunk)
         if left_pose is not None:
-            left_pose_mj = np.array([
-                left_pose[6], left_pose[3], left_pose[4], left_pose[5],  # qw, qx, qy, qz
-                left_pose[0], left_pose[1], left_pose[2]  # x, y, z
-            ])
+            left_pose_mj = self._transform_xr_pose_to_reference_frame(left_pose)
 
         if right_pose is not None:
-            right_pose_mj = np.array([
-                right_pose[6], right_pose[3], right_pose[4], right_pose[5],  # qw, qx, qy, qz
-                right_pose[0], right_pose[1], right_pose[2]  # x, y, z
-            ])
+            right_pose_mj = self._transform_xr_pose_to_reference_frame(right_pose)
 
         # Handle left hand activation
         if left_grip > 0.5 and left_pose is not None:
@@ -592,14 +685,12 @@ class XRT1MinkIKRetargeter(RetargeterBase):
                     self.force_sync = True
                     # Wait for sync to complete before reframing mocap
                     # This ensures the offset is calculated with the synced state
-                    import time
-                    timeout = 0.1  # 100ms timeout
                     start_time = time.time()
-                    while not self.sync_complete and (time.time() - start_time) < timeout:
-                        time.sleep(0.001)  # 1ms sleep
-                self.reframe_mocap("left_hand_target", left_pose_mj)
+                    while not self.sync_complete and (time.time() - start_time) < SYNC_TIMEOUT_SECONDS:
+                        time.sleep(SYNC_POLL_INTERVAL_SECONDS)
+                self.reframe_mocap("left_hand_target", left_pose_mj, relative_site_name=self._reference_frame)
                 self.lhold = True
-            self.sync_mocap("left_hand_target", left_pose_mj)
+            self.sync_mocap("left_hand_target", left_pose_mj, relative_site_name=self._reference_frame)
         else:
             self.lhold = False
             self.move_mocap_to("left_hand_target", "left_hand")
@@ -614,14 +705,12 @@ class XRT1MinkIKRetargeter(RetargeterBase):
                     self.force_sync = True
                     # Wait for sync to complete before reframing mocap
                     # This ensures the offset is calculated with the synced state
-                    import time
-                    timeout = 0.1  # 100ms timeout
                     start_time = time.time()
-                    while not self.sync_complete and (time.time() - start_time) < timeout:
-                        time.sleep(0.001)  # 1ms sleep
-                self.reframe_mocap("right_hand_target", right_pose_mj)
+                    while not self.sync_complete and (time.time() - start_time) < SYNC_TIMEOUT_SECONDS:
+                        time.sleep(SYNC_POLL_INTERVAL_SECONDS)
+                self.reframe_mocap("right_hand_target", right_pose_mj, relative_site_name=self._reference_frame)
                 self.rhold = True
-            self.sync_mocap("right_hand_target", right_pose_mj)
+            self.sync_mocap("right_hand_target", right_pose_mj, relative_site_name=self._reference_frame)
         else:
             self.rhold = False
             self.move_mocap_to("right_hand_target", "right_hand")

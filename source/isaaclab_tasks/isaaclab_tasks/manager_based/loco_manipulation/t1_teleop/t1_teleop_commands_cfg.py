@@ -4,7 +4,7 @@ from isaaclab.managers import CommandTermCfg
 from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 
 import isaaclab.sim as sim_utils
-from .dp_teleop_commands import DummyCommand, DestinationPointCommand
+from .t1_teleop_commands import DummyCommand, DestinationPointCommand
 
 
 @configclass

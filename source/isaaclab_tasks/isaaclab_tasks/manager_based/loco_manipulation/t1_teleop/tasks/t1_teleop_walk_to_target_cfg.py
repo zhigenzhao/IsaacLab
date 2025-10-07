@@ -1,6 +1,6 @@
-from ..dp_teleop_env_cfg import T1DPTeleopEnvCfg, CommandCfg, TerminationCfg
-from ..dp_teleop_commands_cfg import DestinationPointCommandCfg
-from ..dp_teleop_terminations import target_reached
+from ..t1_teleop_env_cfg import T1TeleopEnvCfg, CommandCfg, TerminationCfg
+from ..t1_teleop_commands_cfg import DestinationPointCommandCfg
+from ..t1_teleop_terminations import target_reached
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 
 
@@ -28,7 +28,7 @@ class WalkToTargetTerminationCfg(TerminationCfg):
     )
 
 
-class T1DpTeleopEnvCfg_WalkToTarget(T1DPTeleopEnvCfg):
+class T1TeleopEnvCfg_WalkToTarget(T1TeleopEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 

@@ -74,8 +74,8 @@ class XRControllerDevice(DeviceBase):
         Provides type-safe keys for accessing device data in the dictionary returned
         by _get_raw_data(). This enables IDE autocomplete and prevents typos.
         """
-        LEFT_CONTROLLER = "left_controller"      # Left controller pose [x, y, z, qw, qx, qy, qz]
-        RIGHT_CONTROLLER = "right_controller"    # Right controller pose [x, y, z, qw, qx, qy, qz]
+        LEFT_CONTROLLER = "left_controller"      # Left controller pose [x, y, z, qx, qy, qz, qw]
+        RIGHT_CONTROLLER = "right_controller"    # Right controller pose [x, y, z, qx, qy, qz, qw]
         LEFT_TRIGGER = "left_trigger"            # Left trigger value [0-1]
         RIGHT_TRIGGER = "right_trigger"          # Right trigger value [0-1]
         LEFT_GRIP = "left_grip"                  # Left grip value [0-1]

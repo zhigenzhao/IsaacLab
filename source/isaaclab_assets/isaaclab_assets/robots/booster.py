@@ -273,7 +273,7 @@ T1_GRASP_CFG = ArticulationCfg(
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.3, -0.65, 1.15),
+        pos=(0.3, -0.8, 1.1),
         rot=(0.707, 0.0, 0.0, 0.707),
         joint_pos={
             "AAHead_yaw": 0.0,
@@ -282,8 +282,8 @@ T1_GRASP_CFG = ArticulationCfg(
             "Left_Shoulder_Roll": -1.35,
             "Right_Shoulder_Roll": 1.35,
             ".*_Elbow_Pitch": 0.0,
-            "Left_Elbow_Yaw": 0.0,
-            "Right_Elbow_Yaw": 0.0,
+            "Left_Elbow_Yaw": -0.5,
+            "Right_Elbow_Yaw": 0.5,
             ".*_Wrist_Pitch": 0.0,
             ".*_Wrist_Yaw": 0.0,
             ".*_Hand_Roll": 0.0,
