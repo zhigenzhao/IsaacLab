@@ -248,6 +248,10 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         self.lhold = False
         self.rhold = False
 
+        # Measured joint positions from simulation (for state sync)
+        self.measured_joint_positions = None
+        self.force_sync = False
+
         # Start IK solver thread
         self._start_ik()
 
@@ -293,6 +297,11 @@ class XRT1MinkIKRetargeter(RetargeterBase):
 
         while self.is_running and not self.shutdown_requested:
             with self.datalock:
+                # Force sync if requested (e.g., on reset)
+                if self.force_sync and self.measured_joint_positions is not None:
+                    self.set_qpos_upper(self.measured_joint_positions)
+                    self.force_sync = False
+
                 # Read mocap targets
                 lh_T = ik.SE3.from_mocap_name(self.mj_model, self.mj_data, "left_hand_target")
                 rh_T = ik.SE3.from_mocap_name(self.mj_model, self.mj_data, "right_hand_target")
@@ -436,6 +445,76 @@ class XRT1MinkIKRetargeter(RetargeterBase):
                 res[i] = self.mj_data.joint(jnt_name).qpos
             return res
 
+    def set_qpos_upper(self, joint_positions: np.ndarray):
+        """Update Mink internal state from measured joint positions.
+
+        This syncs the internal MuJoCo simulation state with the actual Isaac Lab
+        simulation state, preventing drift between the IK solver and the real robot.
+
+        Args:
+            joint_positions: Array of 16 upper body joint positions (2 head + 7 left arm + 7 right arm)
+        """
+        if joint_positions is None or len(joint_positions) != 16:
+            return
+
+        with self.datalock:
+            joint_names = [
+                "AAHead_yaw", "Head_pitch",
+                "Left_Shoulder_Pitch", "Left_Shoulder_Roll", "Left_Elbow_Pitch", "Left_Elbow_Yaw",
+                "Left_Wrist_Pitch", "Left_Wrist_Yaw", "Left_Hand_Roll",
+                "Right_Shoulder_Pitch", "Right_Shoulder_Roll", "Right_Elbow_Pitch", "Right_Elbow_Yaw",
+                "Right_Wrist_Pitch", "Right_Wrist_Yaw", "Right_Hand_Roll",
+            ]
+
+            for i, jnt_name in enumerate(joint_names):
+                self.mj_data.joint(jnt_name).qpos = joint_positions[i]
+
+            # Update configuration to match new state
+            self.configuration = ik.Configuration(self.mj_model, self.mj_data.qpos[:])
+
+            # Forward kinematics to update derived quantities
+            mj.mj_forward(self.mj_model, self.mj_data)
+
+    def reset(self, joint_positions: np.ndarray | None = None):
+        """Reset IK solver state to match current simulation state.
+
+        This is typically called on environment reset to ensure the Mink IK solver
+        starts from the correct initial state.
+
+        Args:
+            joint_positions: Optional array of 16 upper body joint positions. If None, resets to home position.
+        """
+        with self.datalock:
+            # Update joint positions if provided
+            if joint_positions is not None:
+                joint_names = [
+                    "AAHead_yaw", "Head_pitch",
+                    "Left_Shoulder_Pitch", "Left_Shoulder_Roll", "Left_Elbow_Pitch", "Left_Elbow_Yaw",
+                    "Left_Wrist_Pitch", "Left_Wrist_Yaw", "Left_Hand_Roll",
+                    "Right_Shoulder_Pitch", "Right_Shoulder_Roll", "Right_Elbow_Pitch", "Right_Elbow_Yaw",
+                    "Right_Wrist_Pitch", "Right_Wrist_Yaw", "Right_Hand_Roll",
+                ]
+                for i, jnt_name in enumerate(joint_names):
+                    self.mj_data.joint(jnt_name).qpos = joint_positions[i]
+                self.configuration = ik.Configuration(self.mj_model, self.mj_data.qpos[:])
+            else:
+                # Reset to home keyframe
+                mj.mj_resetDataKeyframe(self.mj_model, self.mj_data, 0)
+                self.configuration = ik.Configuration(self.mj_model, self.mj_model.keyframe("home").qpos)
+
+            # Reset mocap targets to current hand positions
+            mj.mj_forward(self.mj_model, self.mj_data)
+            ik.move_mocap_to_frame(self.mj_model, self.mj_data, "left_hand_target", "left_hand", "site")
+            ik.move_mocap_to_frame(self.mj_model, self.mj_data, "right_hand_target", "right_hand", "site")
+
+            # Clear delta tracking references
+            self.synced_mocap = {}
+            self.lhold = False
+            self.rhold = False
+
+            # Clear force sync flag
+            self.force_sync = False
+
     def get_mocap_pose_b(self, name: str) -> np.ndarray:
         """Get mocap pose in body frame.
 
@@ -456,7 +535,9 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         """Convert XR controller data to T1 humanoid arm joint commands.
 
         Args:
-            data: Dictionary containing XR controller data with enum keys
+            data: Dictionary containing XR controller data with enum keys.
+                  Can optionally include "measured_joint_positions" key with 16-element array
+                  of current upper body joint positions from Isaac Lab simulation.
 
         Returns:
             torch.Tensor: Either 16-element tensor (joint positions only) or 30-element tensor
@@ -464,6 +545,16 @@ class XRT1MinkIKRetargeter(RetargeterBase):
                          depending on output_joint_positions_only configuration
         """
         from isaaclab.devices.xrobotoolkit.xr_controller import XRControllerDevice
+
+        # Store measured joint positions from simulation if provided
+        # This enables state sync to prevent drift between Mink IK and Isaac Lab
+        measured_positions = data.get("measured_joint_positions")
+        if measured_positions is not None:
+            # Convert to numpy if it's a tensor
+            if isinstance(measured_positions, torch.Tensor):
+                measured_positions = measured_positions.cpu().numpy()
+            with self.datalock:
+                self.measured_joint_positions = measured_positions.copy()
 
         # Access controller data using enum keys
         left_grip = data.get(XRControllerDevice.XRControllerDeviceValues.LEFT_GRIP.value, 0.0)
@@ -488,6 +579,9 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         # Handle left hand activation
         if left_grip > 0.5 and left_pose is not None:
             if not self.lhold:
+                # Sync internal state on grip press transition
+                if self.measured_joint_positions is not None:
+                    self.set_qpos_upper(self.measured_joint_positions)
                 self.reframe_mocap("left_hand_target", left_pose_mj)
                 self.lhold = True
             self.sync_mocap("left_hand_target", left_pose_mj)
@@ -498,6 +592,9 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         # Handle right hand activation
         if right_grip > 0.5 and right_pose is not None:
             if not self.rhold:
+                # Sync internal state on grip press transition
+                if self.measured_joint_positions is not None:
+                    self.set_qpos_upper(self.measured_joint_positions)
                 self.reframe_mocap("right_hand_target", right_pose_mj)
                 self.rhold = True
             self.sync_mocap("right_hand_target", right_pose_mj)

@@ -6,6 +6,7 @@
 """XRoboToolkit XR controller for SE(3) control."""
 
 import numpy as np
+import torch
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -117,6 +118,9 @@ class XRControllerDevice(DeviceBase):
         # Callback dictionary
         self._additional_callbacks = dict()
 
+        # Measured joint positions from simulation (for state sync with retargeters)
+        self._measured_joint_positions = None
+
         print(f"XR Controller initialized with mode: {self.control_mode}, gripper source: {self.gripper_source}")
 
     def __del__(self):
@@ -158,6 +162,18 @@ class XRControllerDevice(DeviceBase):
     def reset(self):
         """Reset the internal state."""
         self._button_pressed_prev = {}
+        self._measured_joint_positions = None
+
+    def set_measured_joint_positions(self, joint_positions: torch.Tensor | np.ndarray):
+        """Set measured joint positions from the simulation.
+
+        This method allows the environment to provide the current robot joint positions
+        to the device, which can then be passed to retargeters for state synchronization.
+
+        Args:
+            joint_positions: Tensor or array of upper body joint positions (16 elements)
+        """
+        self._measured_joint_positions = joint_positions
 
     def add_callback(self, key: str, func: Callable):
         """Add additional functions to bind to controller buttons.
@@ -209,7 +225,7 @@ class XRControllerDevice(DeviceBase):
             # Handle button callbacks
             self._handle_button_callbacks(buttons)
 
-            return {
+            data = {
                 self.XRControllerDeviceValues.LEFT_CONTROLLER.value: left_pose,
                 self.XRControllerDeviceValues.RIGHT_CONTROLLER.value: right_pose,
                 self.XRControllerDeviceValues.LEFT_TRIGGER.value: left_trigger,
@@ -226,6 +242,12 @@ class XRControllerDevice(DeviceBase):
                     'deadzone_threshold': self.deadzone_threshold
                 }
             }
+
+            # Include measured joint positions if available (for state sync with retargeters)
+            if self._measured_joint_positions is not None:
+                data["measured_joint_positions"] = self._measured_joint_positions
+
+            return data
 
         except Exception as e:
             print(f"Error getting XR controller data: {e}")
