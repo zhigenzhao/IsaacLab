@@ -50,6 +50,15 @@ def create_t1_xr_controller_cfg(
                 output_joint_positions_only=True,
                 sim_device=sim_device,
                 reference_frame=reference_frame,
+                # Motion tracker configuration for right elbow tracking
+                motion_tracker_config={
+                    "right_arm": {
+                        "serial": "PC2310MLK6181748G",
+                        "link_target": "right_elbow"
+                    }
+                },
+                arm_length_scale_factor=1.0,
+                motion_tracker_task_weight=0.8,
             ),
             XRGripperRetargeterCfg(
                 control_hand="left",

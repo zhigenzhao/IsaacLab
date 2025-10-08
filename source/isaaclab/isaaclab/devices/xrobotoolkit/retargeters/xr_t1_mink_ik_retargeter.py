@@ -147,6 +147,30 @@ class XRT1MinkIKRetargeterCfg(RetargeterCfg):
     head_pitch_clamp_deg: tuple[float, float] = (-50.0, 50.0)
     """Clamp range for head pitch in degrees (min, max)."""
 
+    motion_tracker_config: dict[str, dict[str, str]] | None = None
+    """Optional motion tracker configuration for additional IK constraints.
+
+    Dictionary mapping arm name to tracker config:
+    {
+        "left_arm": {"serial": "PC2310BLH9020707B", "link_target": "Left_Elbow_Link"},
+        "right_arm": {"serial": "PC2310BLH9020740B", "link_target": "Right_Elbow_Link"}
+    }
+
+    Each tracker config contains:
+        - serial: Motion tracker device serial number
+        - link_target: MuJoCo link name to constrain (e.g., elbow link)
+
+    Motion trackers provide additional position constraints during IK solving,
+    improving arm pose accuracy by tracking intermediate joints like elbows.
+    """
+
+    motion_tracker_task_weight: float = 0.8
+    """Weight/priority for motion tracker position tasks in IK solver."""
+
+    arm_length_scale_factor: float = 1.0
+    """Scale factor for arm length when mapping tracker-to-controller offset to robot.
+    Use 1.0 for 1:1 mapping, <1.0 for shorter robot arms, >1.0 for longer robot arms."""
+
 
 class XRT1MinkIKRetargeter(RetargeterBase):
     """Retargets XR controller poses to T1 humanoid arm joint positions using Mink IK.
@@ -301,12 +325,75 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         self._current_head_yaw = 0.0  # Current head yaw target (radians)
         self._current_head_pitch = 0.0  # Current head pitch target (radians)
 
+        # Motion tracker configuration and state
+        self._motion_tracker_config = cfg.motion_tracker_config
+        self._motion_tracker_task_weight = cfg.motion_tracker_task_weight
+        self._arm_length_scale_factor = cfg.arm_length_scale_factor
+        self.tracker_tasks = {}  # Dict of Mink position tasks for motion trackers
+
+        # Setup motion tracker tasks if configured
+        if self._motion_tracker_config:
+            print(f"[XRT1MinkIKRetargeter] Motion tracker config: {self._motion_tracker_config}")
+            self._setup_motion_tracker_tasks()
+        else:
+            print(f"[XRT1MinkIKRetargeter] No motion tracker configured")
+
         # Start IK solver thread
         self._start_ik()
 
     def __del__(self):
         """Destructor to clean up IK solver thread."""
         self._stop_ik()
+
+    def _setup_motion_tracker_tasks(self):
+        """Setup Mink IK position tasks for motion trackers.
+
+        Creates position-only frame tasks that track mocap bodies representing
+        elbow target positions. The mocap bodies are updated based on the relative
+        position between the motion tracker and controller.
+        """
+        with self.datalock:
+            for arm_name, tracker_config in self._motion_tracker_config.items():
+                link_target = tracker_config["link_target"]
+                serial = tracker_config["serial"]
+
+                # Determine mocap body name based on arm
+                if arm_name == "left_arm":
+                    mocap_name = "left_elbow_target"
+                elif arm_name == "right_arm":
+                    mocap_name = "right_elbow_target"
+                else:
+                    print(f"Warning: Unknown arm name '{arm_name}'. Skipping motion tracker setup.")
+                    continue
+
+                # Verify the link exists in the model
+                try:
+                    self.mj_model.site(link_target).id
+                except KeyError:
+                    print(f"Warning: Motion tracker link site '{link_target}' not found in model. Skipping.")
+                    continue
+
+                # Initialize mocap body to current elbow position
+                ik.move_mocap_to_frame(self.mj_model, self.mj_data, mocap_name, link_target, "site")
+
+                # Create position-only frame task that follows the mocap body
+                tracker_task = ik.FrameTask(
+                    frame_name=link_target,
+                    frame_type="site",
+                    position_cost=self._motion_tracker_task_weight,
+                    orientation_cost=0.0,  # Position only
+                    lm_damping=0.03,
+                )
+
+                # Set task target from mocap body
+                mocap_se3 = ik.SE3.from_mocap_name(self.mj_model, self.mj_data, mocap_name)
+                tracker_task.set_target(mocap_se3)
+
+                # Add task to solver
+                self.tracker_tasks[arm_name] = tracker_task
+                self.tasks.append(tracker_task)
+
+                print(f"Motion tracker task created: {arm_name} -> {link_target} (serial: {serial}, mocap: {mocap_name})")
 
     def _start_ik(self):
         """Start the IK solver thread."""
@@ -364,6 +451,19 @@ class XRT1MinkIKRetargeter(RetargeterBase):
                 self.posture_task.set_target_from_configuration(self.configuration)
                 self.lh_task.set_target(lh_T)
                 self.rh_task.set_target(rh_T)
+
+                # Update motion tracker tasks from their mocap bodies
+                if self._motion_tracker_config:
+                    for arm_name in self.tracker_tasks:
+                        if arm_name == "left_arm":
+                            elbow_mocap_name = "left_elbow_target"
+                        elif arm_name == "right_arm":
+                            elbow_mocap_name = "right_elbow_target"
+                        else:
+                            continue
+
+                        elbow_T = ik.SE3.from_mocap_name(self.mj_model, self.mj_data, elbow_mocap_name)
+                        self.tracker_tasks[arm_name].set_target(elbow_T)
 
                 # Solve IK
                 if self.is_solving:
@@ -633,10 +733,19 @@ class XRT1MinkIKRetargeter(RetargeterBase):
                 mj.mj_resetDataKeyframe(self.mj_model, self.mj_data, 0)
                 self.configuration = ik.Configuration(self.mj_model, self.mj_model.keyframe("home").qpos)
 
-            # Reset mocap targets to current hand positions
+            # Reset mocap targets to current hand and elbow positions
             mj.mj_forward(self.mj_model, self.mj_data)
             ik.move_mocap_to_frame(self.mj_model, self.mj_data, "left_hand_target", "left_hand", "site")
             ik.move_mocap_to_frame(self.mj_model, self.mj_data, "right_hand_target", "right_hand", "site")
+
+            # Reset elbow mocap bodies if motion trackers are configured
+            if self._motion_tracker_config:
+                if "left_arm" in self._motion_tracker_config:
+                    link_target = self._motion_tracker_config["left_arm"]["link_target"]
+                    ik.move_mocap_to_frame(self.mj_model, self.mj_data, "left_elbow_target", link_target, "site")
+                if "right_arm" in self._motion_tracker_config:
+                    link_target = self._motion_tracker_config["right_arm"]["link_target"]
+                    ik.move_mocap_to_frame(self.mj_model, self.mj_data, "right_elbow_target", link_target, "site")
 
             # Clear delta tracking references
             self.synced_mocap = {}
@@ -723,6 +832,101 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         # Convert back to radians
         return np.deg2rad(yaw_deg), np.deg2rad(pitch_deg)
 
+    def _update_motion_tracker_tasks(self, motion_tracker_data: dict, left_active: bool, right_active: bool, data: dict[str, Any] = None):
+        """Update elbow mocap bodies based on motion tracker data.
+
+        Continuously calculates the offset between tracker and controller positions,
+        then applies this offset (scaled) to the hand target mocap position to
+        determine the elbow target position.
+
+        Args:
+            motion_tracker_data: Dictionary of motion tracker data {serial: {"pose": [x,y,z,qx,qy,qz,qw]}}
+            left_active: Whether left arm control is active (grip pressed)
+            right_active: Whether right arm control is active (grip pressed)
+            data: Full device data dictionary containing controller poses
+        """
+        from isaaclab.devices.xrobotoolkit.xr_controller import XRControllerDevice
+
+        if not self._motion_tracker_config or data is None:
+            return
+
+        # Map arm names to activation status and hand mocap names
+        arm_info = {
+            "left_arm": {
+                "active": left_active,
+                "hand_mocap": "left_hand_target",
+                "elbow_mocap": "left_elbow_target",
+                "elbow_site": None  # Will be filled from config
+            },
+            "right_arm": {
+                "active": right_active,
+                "hand_mocap": "right_hand_target",
+                "elbow_mocap": "right_elbow_target",
+                "elbow_site": None  # Will be filled from config
+            }
+        }
+
+        with self.datalock:
+            for arm_name, tracker_config in self._motion_tracker_config.items():
+                serial = tracker_config["serial"]
+                link_target = tracker_config["link_target"]
+
+                if arm_name not in arm_info:
+                    continue
+
+                arm_data = arm_info[arm_name]
+                arm_data["elbow_site"] = link_target
+
+                # If arm is inactive, move elbow mocap to current actual elbow position
+                if not arm_data["active"]:
+                    ik.move_mocap_to_frame(
+                        self.mj_model, self.mj_data,
+                        arm_data["elbow_mocap"], link_target, "site"
+                    )
+                    continue
+
+                # Skip if tracker not in data
+                if serial not in motion_tracker_data:
+                    # If no tracker data, keep elbow at current position
+                    ik.move_mocap_to_frame(
+                        self.mj_model, self.mj_data,
+                        arm_data["elbow_mocap"], link_target, "site"
+                    )
+                    continue
+
+                # Get tracker pose transformed to reference frame
+                tracker_pose_xr = motion_tracker_data[serial]["pose"]
+                tracker_pose_mj = self._transform_xr_pose_to_reference_frame(tracker_pose_xr)
+                tracker_xyz = tracker_pose_mj[4:]  # [qw,qx,qy,qz,x,y,z] -> [x,y,z]
+
+                # Get controller pose transformed to reference frame (not mocap target!)
+                if arm_name == "left_arm":
+                    controller_pose_xr = data.get(XRControllerDevice.XRControllerDeviceValues.LEFT_CONTROLLER.value)
+                elif arm_name == "right_arm":
+                    controller_pose_xr = data.get(XRControllerDevice.XRControllerDeviceValues.RIGHT_CONTROLLER.value)
+                else:
+                    continue
+
+                if controller_pose_xr is None:
+                    continue
+
+                controller_pose_mj = self._transform_xr_pose_to_reference_frame(controller_pose_xr)
+                controller_xyz = controller_pose_mj[4:]  # [qw,qx,qy,qz,x,y,z] -> [x,y,z]
+
+                # Calculate offset in reference frame
+                offset = tracker_xyz - controller_xyz
+
+                # Get hand mocap target position and add scaled offset
+                hand_mocap_id = self.mj_model.body(arm_data["hand_mocap"]).mocapid[0]
+                hand_target_xyz = self.mj_data.mocap_pos[hand_mocap_id].copy()
+
+                # Calculate elbow target: hand target + scaled offset
+                elbow_target_xyz = hand_target_xyz + offset * self._arm_length_scale_factor
+
+                # Update elbow mocap body
+                elbow_mocap_id = self.mj_model.body(arm_data["elbow_mocap"]).mocapid[0]
+                self.mj_data.mocap_pos[elbow_mocap_id] = elbow_target_xyz
+
     def retarget(self, data: dict[str, Any]) -> torch.Tensor:
         """Convert XR controller data to T1 humanoid arm joint commands.
 
@@ -802,6 +1006,14 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         else:
             self.rhold = False
             self.move_mocap_to("right_hand_target", "right_hand")
+
+        # Update motion tracker targets (elbow tracking)
+        if self._motion_tracker_config:
+            motion_tracker_data = data.get(XRControllerDevice.XRControllerDeviceValues.MOTION_TRACKERS.value, {})
+            left_active = left_grip > 0.5 and left_pose is not None
+            right_active = right_grip > 0.5 and right_pose is not None
+
+            self._update_motion_tracker_tasks(motion_tracker_data, left_active, right_active, data)
 
         # Update head tracking from headset if enabled
         if self._enable_head_tracking:

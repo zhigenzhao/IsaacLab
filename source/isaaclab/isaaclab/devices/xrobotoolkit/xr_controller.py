@@ -84,6 +84,7 @@ class XRControllerDevice(DeviceBase):
         BUTTONS = "buttons"                      # Dictionary of button states
         TIMESTAMP = "timestamp"                  # Timestamp in nanoseconds
         CONFIG = "config"                        # Device configuration dictionary
+        MOTION_TRACKERS = "motion_trackers"      # Dictionary of motion tracker data {serial: {"pose": [x,y,z,qx,qy,qz,qw]}}
 
     def __init__(self, cfg: XRControllerDeviceCfg, retargeters: list | None = None):
         """Initialize the XR controller device.
@@ -200,6 +201,7 @@ class XRControllerDevice(DeviceBase):
                 - right_grip: float [0-1]
                 - buttons: dict with button states
                 - config: dict with device configuration
+                - motion_trackers: dict {serial: {"pose": [x,y,z,qx,qy,qz,qw]}}
         """
         try:
             # Get controller poses
@@ -228,6 +230,23 @@ class XRControllerDevice(DeviceBase):
             # Handle button callbacks
             self._handle_button_callbacks(buttons)
 
+            # Get motion tracker data
+            motion_trackers = {}
+            try:
+                num_motion_data = xrt.num_motion_data_available()
+                if num_motion_data > 0:
+                    poses = xrt.get_motion_tracker_pose()
+                    serial_numbers = xrt.get_motion_tracker_serial_numbers()
+
+                    for i in range(num_motion_data):
+                        serial = serial_numbers[i]
+                        motion_trackers[serial] = {
+                            "pose": np.array(poses[i], dtype=np.float32)
+                        }
+            except Exception as tracker_error:
+                # Motion trackers are optional, don't fail if not available
+                pass
+
             data = {
                 self.XRControllerDeviceValues.LEFT_CONTROLLER.value: left_pose,
                 self.XRControllerDeviceValues.RIGHT_CONTROLLER.value: right_pose,
@@ -244,7 +263,8 @@ class XRControllerDevice(DeviceBase):
                     'control_mode': self.control_mode,
                     'gripper_source': self.gripper_source,
                     'deadzone_threshold': self.deadzone_threshold
-                }
+                },
+                self.XRControllerDeviceValues.MOTION_TRACKERS.value: motion_trackers
             }
 
             # Include measured joint positions if available (for state sync with retargeters)
