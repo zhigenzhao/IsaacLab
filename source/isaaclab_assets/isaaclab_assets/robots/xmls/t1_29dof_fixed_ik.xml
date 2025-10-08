@@ -108,7 +108,6 @@
             <inertial pos="0 0.085353 -9.9e-05" quat="0.70641 0.707803 0 0" mass="1.02"
               diaginertia="0.012869 0.012798 0.000620953" />
             <joint name="Left_Elbow_Pitch" pos="0 0 0" axis="0 1 0" limited="false" range="-2.0 2.0" />
-            <site name="left_elbow" pos="0 0 0" />
             <geom class="visual" type="mesh" mesh="AL3" name="al3" />
             <geom class="collision" size="0.03 0.075" pos="0 0.05 0" quat="0.707105 0.707108 0 0" type="cylinder"
               name="al3_collision" />
@@ -117,6 +116,7 @@
               <inertial pos="-0.00046851 0.062372 0.0015178" quat="0.708114 0.706086 -0.00272503 -0.00309075"
                 mass="0.5570" diaginertia="0.0016731 0.00160801 0.00021389" />
               <joint name="Left_Elbow_Yaw" pos="0 0 0" axis="0 0 1" limited="false" range="-1.5 1.5" />
+              <site name="left_elbow" pos="0 0 0" />
               <geom class="collision" size="0.04 0.07" pos="0 0.08 0" quat="0.707105 0.707108 0 0" type="cylinder"
                 name="al4_collision" />
               <geom class="visual" type="mesh" mesh="AL4" name="al4" />
@@ -170,7 +170,6 @@
             <inertial pos="0 -0.085353 -9.9e-05" quat="0.707803 0.70641 0 0" mass="1.02"
               diaginertia="0.012869 0.012798 0.000620953" />
             <joint name="Right_Elbow_Pitch" pos="0 0 0" axis="0 1 0" limited="false" range="-2.0 2.0" />
-            <site name="right_elbow" pos="0 0 0" />
             <geom class="visual" type="mesh" mesh="AR3" name="ar3" />
             <geom class="collision" size="0.03 0.075" pos="0 -0.05 0" quat="0.707105 0.707108 0 0" type="cylinder"
               name="ar3_collision" />
@@ -179,6 +178,7 @@
               <inertial pos="-0.0004573 -0.067734 0.0017465" quat="0.706214 0.70799 0.00258227 0.0022281" mass="0.5570"
                 diaginertia="0.0022921 0.00222301 0.000233892" />
               <joint name="Right_Elbow_Yaw" pos="0 0 0" axis="0 0 1" limited="false" range="-1.5 1.5" />
+              <site name="right_elbow" pos="0 0 0" />
               <geom class="collision" size="0.04 0.07" pos="0 -0.08 0" quat="0.707105 0.707108 0 0" type="cylinder"
                 name="ar4_collision" />
               <geom class="visual" type="mesh" mesh="AR4" name="ar4" />
