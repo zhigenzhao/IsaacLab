@@ -167,7 +167,7 @@ class XRT1MinkIKRetargeterCfg(RetargeterCfg):
     motion_tracker_task_weight: float = 0.8
     """Weight/priority for motion tracker position tasks in IK solver."""
 
-    arm_length_scale_factor: float = 1.0
+    arm_length_scale_factor: float = 0.9
     """Scale factor for arm length when mapping tracker-to-controller offset to robot.
     Use 1.0 for 1:1 mapping, <1.0 for shorter robot arms, >1.0 for longer robot arms."""
 

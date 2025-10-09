@@ -210,9 +210,8 @@ def create_environment_config(
         )
 
     if args_cli.xr:
-        # If cameras are not enabled and XR is enabled, remove camera configs
-        if not args_cli.enable_cameras:
-            env_cfg = remove_camera_configs(env_cfg)
+        # Keep cameras enabled in XR mode for demonstration recording
+        # Cameras are needed to record visual observations
         env_cfg.sim.render.antialiasing_mode = "DLSS"
 
     # modify configuration such that the environment runs indefinitely until
