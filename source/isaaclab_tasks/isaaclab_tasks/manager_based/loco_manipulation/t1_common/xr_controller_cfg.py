@@ -50,6 +50,11 @@ def create_t1_xr_controller_cfg(
                 output_joint_positions_only=True,
                 sim_device=sim_device,
                 reference_frame=reference_frame,
+                # Head tracking configuration
+                enable_head_tracking=True,
+                head_task_orientation_cost=8.0,  # Increased to overpower other tasks
+                head_task_position_cost=0.0,
+                head_task_lm_damping=0.03,
                 # Motion tracker configuration for right elbow tracking
                 motion_tracker_config={
                     "right_arm": {

@@ -431,24 +431,54 @@ def run_simulation_loop(
     def reset_recording_instance():
         nonlocal should_reset_recording_instance
         should_reset_recording_instance = True
-        print("Recording instance reset requested")
+        print("🔄 Recording instance reset requested")
 
     def start_recording_instance():
         nonlocal running_recording_instance
         running_recording_instance = True
-        print("Recording started")
+        print("▶️  Recording started")
 
-    def stop_recording_instance():
+    def pause_recording_instance():
         nonlocal running_recording_instance
         running_recording_instance = False
-        print("Recording paused")
+        print("⏸️  Recording paused")
+
+    def save_recording_instance():
+        nonlocal should_reset_recording_instance, running_recording_instance
+        if running_recording_instance or env.recorder_manager.get_episode(0).length() > 0:
+            print("💾 Saving current demonstration...")
+            # Stop recording
+            running_recording_instance = False
+            # Mark episode as successful and export
+            env.recorder_manager.record_pre_reset([0], force_export_or_skip=False)
+            env.recorder_manager.set_success_to_episodes(
+                [0], torch.tensor([[True]], dtype=torch.bool, device=env.device)
+            )
+            env.recorder_manager.export_episodes([0])
+            print("✅ Episode saved successfully!")
+            # Trigger reset
+            should_reset_recording_instance = True
+        else:
+            print("ℹ️  No data to save - episode is empty")
+
+    def discard_recording_instance():
+        nonlocal should_reset_recording_instance, running_recording_instance
+        if running_recording_instance:
+            print("🗑️  Discarding current demonstration (not saved)")
+            running_recording_instance = False
+            should_reset_recording_instance = True
+        else:
+            print("ℹ️  Nothing to discard - not currently recording")
 
     # Set up teleoperation callbacks
+    # Button mapping: A=START, B=SAVE, X=RESET, Y=PAUSE, Right-stick-click=DISCARD
     teleoperation_callbacks = {
-        "R": reset_recording_instance,
-        "START": start_recording_instance,
-        "STOP": stop_recording_instance,
-        "RESET": reset_recording_instance,
+        "R": reset_recording_instance,          # Keyboard R
+        "START": start_recording_instance,      # A button (right_primary)
+        "SAVE": save_recording_instance,        # B button (right_secondary)
+        "RESET": reset_recording_instance,      # X button (left_primary)
+        "PAUSE": pause_recording_instance,      # Y button (left_secondary)
+        "DISCARD": discard_recording_instance,  # Right joystick click
     }
 
     teleop_interface = setup_teleop_device(teleoperation_callbacks)

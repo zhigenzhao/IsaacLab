@@ -158,7 +158,13 @@ class XRControllerDevice(DeviceBase):
         else:
             msg += "\t\tPrimary button: Press to toggle gripper\n"
 
-        msg += "\t\tMenu button: Reset pose reference\n"
+        msg += "\t----------------------------------------------\n"
+        msg += "\tButton Mappings for Demo Recording:\n"
+        msg += "\t\tA button: START recording\n"
+        msg += "\t\tB button: SAVE and reset (saves current episode)\n"
+        msg += "\t\tX button: RESET environment (discards data)\n"
+        msg += "\t\tY button: PAUSE recording\n"
+        msg += "\t\tRight joystick click: DISCARD recording\n"
         return msg
 
     def reset(self):
@@ -308,12 +314,21 @@ class XRControllerDevice(DeviceBase):
             was_pressed = self._button_pressed_prev.get(button_name, False)
 
             if is_pressed and not was_pressed:  # Rising edge
-                if button_name in ['left_menu', 'right_menu'] and 'RESET' in self._additional_callbacks:
-                    self._additional_callbacks['RESET']()
-                elif button_name in ['left_secondary', 'right_secondary'] and 'START' in self._additional_callbacks:
+                # A button = START recording
+                if button_name == 'right_primary' and 'START' in self._additional_callbacks:
                     self._additional_callbacks['START']()
-                elif button_name in ['left_axis_click', 'right_axis_click'] and 'STOP' in self._additional_callbacks:
-                    self._additional_callbacks['STOP']()
+                # B button = SAVE and reset
+                elif button_name == 'right_secondary' and 'SAVE' in self._additional_callbacks:
+                    self._additional_callbacks['SAVE']()
+                # X button = RESET
+                elif button_name == 'left_primary' and 'RESET' in self._additional_callbacks:
+                    self._additional_callbacks['RESET']()
+                # Y button = PAUSE recording
+                elif button_name == 'left_secondary' and 'PAUSE' in self._additional_callbacks:
+                    self._additional_callbacks['PAUSE']()
+                # Right joystick click = DISCARD
+                elif button_name == 'right_axis_click' and 'DISCARD' in self._additional_callbacks:
+                    self._additional_callbacks['DISCARD']()
 
         # Update previous button states
         self._button_pressed_prev = buttons.copy()
