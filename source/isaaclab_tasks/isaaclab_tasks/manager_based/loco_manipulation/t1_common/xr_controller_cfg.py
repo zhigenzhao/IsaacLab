@@ -58,8 +58,12 @@ def create_t1_xr_controller_cfg(
                 # Motion tracker configuration for right elbow tracking
                 motion_tracker_config={
                     "right_arm": {
-                        "serial": "PC2310MLK6181748G",
+                        "serial": "PC2310MLK6140013G",
                         "link_target": "right_elbow"
+                    },
+                    "left_arm": {
+                        "serial": "PC2310MLK6140583G",
+                        "link_target": "left_elbow"
                     }
                 },
                 arm_length_scale_factor=1.0,
