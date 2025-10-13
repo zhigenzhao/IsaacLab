@@ -221,9 +221,9 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         self.configuration = ik.Configuration(self.mj_model, self.mj_model.keyframe("home").qpos)
 
         # Define IK tasks for T1 robot
-        # Create posture task with reduced cost for head joints to allow head tracking
-        # Head joints (AAHead_yaw, Head_pitch) should be controlled by head_task, not posture_task
-        posture_costs = np.array([0.0] * 2 + [0.05] * (self.mj_model.nv - 2))  # Zero cost for first 2 joints (head)
+        # Posture task maintains all joints at home position when not actively controlled
+        # Head joints are now directly controlled (not via IK), so posture task helps maintain them
+        posture_costs = np.array([0.05] * self.mj_model.nv)  # Uniform cost for all joints
         self.posture_task = ik.PostureTask(self.mj_model, cost=posture_costs)
         self.lh_task = ik.FrameTask(
             frame_name="left_hand",
@@ -239,18 +239,12 @@ class XRT1MinkIKRetargeter(RetargeterBase):
             orientation_cost=2.0,
             lm_damping=0.03,
         )
-        self.head_task = ik.FrameTask(
-            frame_name="head",
-            frame_type="site",
-            position_cost=self._head_task_position_cost,
-            orientation_cost=self._head_task_orientation_cost,
-            lm_damping=self._head_task_lm_damping,
-        )
+        # Note: Head control is now done via direct joint angle setting, not IK task
         self.damping_task = ik.DampingTask(
             self.mj_model,
             cost=np.array([0.1] * 2 + (([0.5] * 4 + [0.1] * 3) * 2) + [0.1] * 13)
         )
-        self.tasks = [self.posture_task, self.lh_task, self.rh_task, self.head_task, self.damping_task]
+        self.tasks = [self.posture_task, self.lh_task, self.rh_task, self.damping_task]
 
         # Define collision pairs for T1 self-collision avoidance
         self.collision_pairs = [
@@ -318,6 +312,10 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         self.lhold = False
         self.rhold = False
         self.htrack = False  # Head tracking activation state
+
+        # Head joint angles (directly controlled, not via IK)
+        self.desired_head_yaw = 0.0
+        self.desired_head_pitch = 0.0
 
         # Measured joint positions from simulation (for state sync)
         self.measured_joint_positions = None
@@ -426,11 +424,10 @@ class XRT1MinkIKRetargeter(RetargeterBase):
 
     def _solve_ik_loop(self):
         """Main IK solver loop running in separate thread."""
-        # Initialize mocap targets
+        # Initialize mocap targets (hands only, head is now controlled directly)
         mj.mj_forward(self.mj_model, self.mj_data)
         ik.move_mocap_to_frame(self.mj_model, self.mj_data, "left_hand_target", "left_hand", "site")
         ik.move_mocap_to_frame(self.mj_model, self.mj_data, "right_hand_target", "right_hand", "site")
-        ik.move_mocap_to_frame(self.mj_model, self.mj_data, "head_target", "head", "site")
 
         rate = RateLimiter(self._ik_rate_hz)
 
@@ -443,32 +440,17 @@ class XRT1MinkIKRetargeter(RetargeterBase):
                     # This prevents jumps when reframe_mocap calculates the offset
                     ik.move_mocap_to_frame(self.mj_model, self.mj_data, "left_hand_target", "left_hand", "site")
                     ik.move_mocap_to_frame(self.mj_model, self.mj_data, "right_hand_target", "right_hand", "site")
-                    ik.move_mocap_to_frame(self.mj_model, self.mj_data, "head_target", "head", "site")
                     self.force_sync = False
                     self.sync_complete = True
 
-                # Read mocap targets
+                # Read mocap targets (hands only, head is now controlled directly)
                 lh_T = ik.SE3.from_mocap_name(self.mj_model, self.mj_data, "left_hand_target")
                 rh_T = ik.SE3.from_mocap_name(self.mj_model, self.mj_data, "right_hand_target")
-                head_T = ik.SE3.from_mocap_name(self.mj_model, self.mj_data, "head_target")
 
-                # Update IK tasks
+                # Update IK tasks (no head task anymore)
                 self.posture_task.set_target_from_configuration(self.configuration)
                 self.lh_task.set_target(lh_T)
                 self.rh_task.set_target(rh_T)
-                self.head_task.set_target(head_T)
-
-                # Debug: Print head target vs actual orientation occasionally
-                if not hasattr(self, '_debug_counter'):
-                    self._debug_counter = 0
-                self._debug_counter += 1
-                if self._debug_counter % 100 == 0:  # Print every 100 iterations
-                    head_site_id = self.mj_model.site("head").id
-                    head_actual_quat = mat_to_quat(self.mj_data.site_xmat[head_site_id].reshape(3, 3))
-                    print(f"Head target quat: {head_T.wxyz_xyz[:4]}")
-                    print(f"Head actual quat: {head_actual_quat}")
-                    print(f"Head_pitch joint: {self.mj_data.joint('Head_pitch').qpos}")
-                    print(f"AAHead_yaw joint: {self.mj_data.joint('AAHead_yaw').qpos}")
 
                 # Update motion tracker tasks from their mocap bodies
                 if self._motion_tracker_config:
@@ -498,6 +480,14 @@ class XRT1MinkIKRetargeter(RetargeterBase):
                     self.mj_data.qpos[:] = self.configuration.q
                 else:
                     self.configuration = ik.Configuration(self.mj_model, self.mj_data.qpos[:])
+
+                # Apply head joint angles directly (overriding IK solution for head)
+                yaw_qpos_idx = self.mj_model.joint('AAHead_yaw').qposadr[0]
+                pitch_qpos_idx = self.mj_model.joint('Head_pitch').qposadr[0]
+                self.mj_data.qpos[yaw_qpos_idx] = self.desired_head_yaw
+                self.mj_data.qpos[pitch_qpos_idx] = self.desired_head_pitch
+                self.configuration.q[yaw_qpos_idx] = self.desired_head_yaw
+                self.configuration.q[pitch_qpos_idx] = self.desired_head_pitch
 
                 mj.mj_forward(self.mj_model, self.mj_data)
 
@@ -664,11 +654,11 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         # Transform position from headset to world
         pos_world = R_HEADSET_TO_WORLD @ pos_headset
 
-        # Transform orientation from headset to world
-        R_quat_headset = Rotation.from_quat([quat_headset[1], quat_headset[2], quat_headset[3], quat_headset[0]])  # scipy uses [x,y,z,w]
-        R_world = Rotation.from_matrix(R_HEADSET_TO_WORLD) * R_quat_headset
-        quat_world_scipy = R_world.as_quat()  # [x, y, z, w]
-        quat_world = np.array([quat_world_scipy[3], quat_world_scipy[0], quat_world_scipy[1], quat_world_scipy[2]])  # [qw, qx, qy, qz]
+        # Transform orientation from headset to world: R_quat * headset_quat * R_quat_conj
+        R_quat_scipy = Rotation.from_matrix(R_HEADSET_TO_WORLD).as_quat()  # [x, y, z, w]
+        R_quat = np.array([R_quat_scipy[3], R_quat_scipy[0], R_quat_scipy[1], R_quat_scipy[2]])  # [w, x, y, z]
+        R_quat_conj = np.array([R_quat[0], -R_quat[1], -R_quat[2], -R_quat[3]])
+        quat_world = quat_multiply(quat_multiply(R_quat, quat_headset), R_quat_conj)
 
         # Create world frame pose in MuJoCo format
         pose_mj_world = np.concatenate([quat_world, pos_world])
@@ -676,17 +666,17 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         # Transform to reference frame
         return self._transform_world_to_site(pose_mj_world, self._reference_frame)
 
-    def _transform_headset_orientation_to_reference_frame(self, headset_pose: np.ndarray) -> np.ndarray:
-        """Transform headset orientation to head frame orientation for IK target.
+    def _extract_head_joint_angles_from_headset(self, headset_pose: np.ndarray) -> tuple[float, float]:
+        """Extract yaw and pitch joint angles from headset orientation in world frame.
 
-        This method extracts ONLY the orientation from the headset pose and transforms
-        it to the reference frame. Position is ignored since head IK task is orientation-only.
+        This method transforms the headset orientation to world frame and extracts
+        the yaw and pitch angles for direct joint control (no IK).
 
         Args:
             headset_pose: Headset pose [x, y, z, qx, qy, qz, qw] from XR device
 
         Returns:
-            Quaternion [qw, qx, qy, qz] in reference frame representing desired head orientation
+            Tuple of (yaw, pitch) in radians for AAHead_yaw and Head_pitch joints
 
         Raises:
             ValueError: If quaternion has zero norm (invalid headset data)
@@ -702,46 +692,40 @@ class XRT1MinkIKRetargeter(RetargeterBase):
 
         quat_headset = quat_headset / quat_norm  # Normalize
 
-        # Transform orientation from headset to world frame
-        R_quat_headset = Rotation.from_quat([quat_headset[1], quat_headset[2], quat_headset[3], quat_headset[0]])
-        R_world = Rotation.from_matrix(R_HEADSET_TO_WORLD) * R_quat_headset
-        quat_world_scipy = R_world.as_quat()  # [x, y, z, w]
-        quat_world = np.array([quat_world_scipy[3], quat_world_scipy[0], quat_world_scipy[1], quat_world_scipy[2]])
+        # Transform orientation from headset to world frame: R_quat * headset_quat * R_quat_conj
+        R_quat_scipy = Rotation.from_matrix(R_HEADSET_TO_WORLD).as_quat()  # [x, y, z, w]
+        R_quat = np.array([R_quat_scipy[3], R_quat_scipy[0], R_quat_scipy[1], R_quat_scipy[2]])  # [w, x, y, z]
+        R_quat_conj = np.array([R_quat[0], -R_quat[1], -R_quat[2], -R_quat[3]])
+        quat_world = quat_multiply(quat_multiply(R_quat, quat_headset), R_quat_conj)
 
-        # Transform from world frame to reference frame
-        site_id = self.mj_model.site(self._reference_frame).id
-        site_xmat = self.mj_data.site_xmat[site_id].reshape(3, 3)
-        site_quat = mat_to_quat(site_xmat)
-        site_quat_inv = np.array([site_quat[0], -site_quat[1], -site_quat[2], -site_quat[3]])
+        # Extract Euler angles (XYZ intrinsic convention)
+        euler_angles = Rotation.from_quat([quat_world[1], quat_world[2], quat_world[3], quat_world[0]]).as_euler('xyz', degrees=False)
+        yaw = euler_angles[2]   # Rotation around Z-axis -> AAHead_yaw
+        pitch = euler_angles[1]  # Rotation around Y-axis -> Head_pitch
 
-        quat_rel = quat_multiply(site_quat_inv, quat_world)
+        print(f"Extracted head angles from headset: yaw={yaw:.3f}, pitch={pitch:.3f}")
 
-        return quat_rel  # [qw, qx, qy, qz]
+        # Apply joint limits
+        # AAHead_yaw: range="-1.57 1.57" (-90° to +90°)
+        # Head_pitch: range="-0.35 1.22" (-20° to +70°)
+        yaw = np.clip(yaw, -1.57, 1.57)
+        pitch = np.clip(pitch, -0.35, 1.22)
 
-    def update_head_orientation_target(self, quat_ref_frame: np.ndarray):
-        """Update head mocap target orientation in reference frame.
+        return yaw, pitch
 
-        IMPORTANT: This function ONLY updates orientation, never position. The mocap
-        position is set once during initialization and never changed.
+    def set_head_joint_angles(self, yaw: float, pitch: float):
+        """Set desired head joint angles (applied in IK loop).
+
+        This method stores the desired head joint angles, which are then applied
+        in the IK solver loop after each IK solve.
 
         Args:
-            quat_ref_frame: Target orientation quaternion [qw, qx, qy, qz] in reference frame
+            yaw: Target yaw angle in radians for AAHead_yaw joint
+            pitch: Target pitch angle in radians for Head_pitch joint
         """
-        if not self.is_ready:
-            return
-
         with self.datalock:
-            # Get reference frame site transform
-            site_id = self.mj_model.site(self._reference_frame).id
-            site_xmat = self.mj_data.site_xmat[site_id].reshape(3, 3)
-
-            # Transform orientation from reference frame to world frame
-            site_quat = mat_to_quat(site_xmat)
-            quat_world = quat_multiply(site_quat, quat_ref_frame)
-
-            # Update ONLY the orientation of the head mocap body (do NOT touch position)
-            head_mocap_id = self.mj_model.body("head_target").mocapid[0]
-            self.mj_data.mocap_quat[head_mocap_id] = quat_world
+            self.desired_head_yaw = yaw
+            self.desired_head_pitch = pitch
 
     def get_qpos_upper(self) -> np.ndarray:
         """Get current T1 upper body joint positions.
@@ -818,11 +802,10 @@ class XRT1MinkIKRetargeter(RetargeterBase):
                 mj.mj_resetDataKeyframe(self.mj_model, self.mj_data, 0)
                 self.configuration = ik.Configuration(self.mj_model, self.mj_model.keyframe("home").qpos)
 
-            # Reset mocap targets to current positions/orientations
+            # Reset mocap targets to current positions/orientations (hands only, head is directly controlled)
             mj.mj_forward(self.mj_model, self.mj_data)
             ik.move_mocap_to_frame(self.mj_model, self.mj_data, "left_hand_target", "left_hand", "site")
             ik.move_mocap_to_frame(self.mj_model, self.mj_data, "right_hand_target", "right_hand", "site")
-            ik.move_mocap_to_frame(self.mj_model, self.mj_data, "head_target", "head", "site")
 
             # Reset elbow mocap bodies if motion trackers are configured
             if self._motion_tracker_config:
@@ -1041,37 +1024,34 @@ class XRT1MinkIKRetargeter(RetargeterBase):
 
             self._update_motion_tracker_tasks(motion_tracker_data, left_active, right_active, data)
 
-        # Handle head orientation tracking via IK
+        # Handle head orientation tracking via direct joint angle control
         if self._enable_head_tracking:
             headset_pose = data.get(XRControllerDevice.XRControllerDeviceValues.HEADSET.value)
             if headset_pose is not None:
                 try:
-                    # Transform headset orientation to reference frame
-                    head_quat_ref = self._transform_headset_orientation_to_reference_frame(headset_pose)
+                    # Extract yaw and pitch angles from headset orientation
+                    yaw, pitch = self._extract_head_joint_angles_from_headset(headset_pose)
 
-                    # Update head mocap target orientation
-                    self.update_head_orientation_target(head_quat_ref)
+                    # Directly set head joint angles (bypassing IK)
+                    self.set_head_joint_angles(yaw, pitch)
 
                     # Mark head tracking as active
                     if not self.htrack:
-                        print("Head tracking activated")
+                        print("Head tracking activated (direct joint control)")
                         self.htrack = True
 
                 except ValueError as e:
-                    # Invalid headset data - keep head at current IK solution
+                    # Invalid headset data - keep head at current angles
                     if self.htrack:
                         print(f"Head tracking deactivated: {e}")
-                        # Move head target to current head position/orientation (let IK maintain current pose)
-                        self.move_mocap_to("head_target", "head")
                         self.htrack = False
         else:
-            # Head tracking disabled or no headset data - let IK maintain current head pose
+            # Head tracking disabled
             if self.htrack:
                 print("Head tracking disabled")
                 self.htrack = False
-            self.move_mocap_to("head_target", "head")
 
-        # Get IK solution (now includes head from IK, not override)
+        # Get IK solution (head joints are directly set, not from IK)
         qpos_upper = self.get_qpos_upper()
 
         # Return based on configuration
