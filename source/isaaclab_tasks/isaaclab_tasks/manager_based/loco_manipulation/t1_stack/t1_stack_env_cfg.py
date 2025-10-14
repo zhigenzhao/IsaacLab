@@ -31,6 +31,7 @@ from . import t1_stack_mdp
 from ..t1_common.joint_names import T1_UPPER_BODY_JOINTS, T1_UPPER_BODY_WITH_GRIPPERS
 from ..t1_common.xr_controller_cfg import create_t1_xr_controller_cfg
 from ..t1_common.physics_constants import MANIPULATION_OBJECT_PROPERTIES, MANIPULATION_PHYSX_SETTINGS
+from ..t1_common.t1_camera_cfg import get_default_t1_head_cameras
 
 ##
 # Pre-defined configs
@@ -72,31 +73,42 @@ class T1StackSceneCfg(InteractiveSceneCfg):
 ##
 # Reset state for T1
 ##
-PREP_STATE = {
-    "AAHead_yaw": 0.0,
-    "Head_pitch": 0.0,
-    ".*_Shoulder_Pitch": 0.0706,
-    "Left_Shoulder_Roll": -1.55,
-    "Right_Shoulder_Roll": 1.55,
-    ".*_Elbow_Pitch": 0.0,
-    "Left_Elbow_Yaw": -0.5,
-    "Right_Elbow_Yaw": 0.5,
-    ".*_Wrist_Pitch": 0.0,
-    ".*_Wrist_Yaw": 0.0,
-    ".*_Hand_Roll": 0.0,
-    "Waist": 0.0,
-}
+PREP_STATE = ArticulationCfg.InitialStateCfg(
+    pos=(0.0, 0.0, 0.7),
+    joint_pos={
+        "AAHead_yaw": 0.0,
+        "Head_pitch": 0.0,
+        ".*_Shoulder_Pitch": 0.0706,
+        "Left_Shoulder_Roll": -1.55,
+        "Right_Shoulder_Roll": 1.55,
+        ".*_Elbow_Pitch": 0.0,
+        "Left_Elbow_Yaw": -1.57,
+        "Right_Elbow_Yaw": 1.57,
+        ".*_Wrist_Pitch": 0.0,
+        ".*_Wrist_Yaw": 0.0,
+        ".*_Hand_Roll": 0.0,
+        "Waist": 0.0,
+    },
+    joint_vel={".*": 0.0},
+)
 
 
 def reset_to_prep(env: ManagerBasedRLEnv, env_ids: torch.Tensor, asset_cfg: SceneEntityCfg):
-    """Reset robot joints to preparation state."""
+    """Reset robot joints to preparation state and position."""
     asset: Articulation = env.scene[asset_cfg.name]
-    joint_pos = asset.data.joint_pos.clone()
-    for joint_name, target_pos in PREP_STATE.items():
+
+    # Reset joint positions
+    joint_pos = asset.data.default_joint_pos.clone()
+    for joint_name, target_pos in PREP_STATE.joint_pos.items():
         idx = asset.find_joints(joint_name, preserve_order=True)[0]
         joint_pos[env_ids, idx] = target_pos
 
+    # Reset robot root position
+    root_state = asset.data.default_root_state.clone()
+    root_state[env_ids, :3] = torch.tensor(PREP_STATE.pos, device=asset.device)
+
     # Apply the reset
+    asset.write_root_state_to_sim(root_state, env_ids=env_ids)
     asset.write_joint_state_to_sim(joint_pos, torch.zeros_like(asset.data.joint_vel), env_ids=env_ids)
 
 
@@ -180,6 +192,16 @@ class ObservationsCfg:
         # Object observations
         cube_positions = ObsTerm(func=t1_stack_mdp.cube_positions_in_robot_frame)
         cube_orientations = ObsTerm(func=t1_stack_mdp.cube_orientations_in_robot_frame)
+
+        # Camera observations
+        head_rgb_cam = ObsTerm(
+            func=mdp.image,
+            params={"sensor_cfg": SceneEntityCfg("head_rgb_cam"), "data_type": "rgb", "normalize": False}
+        )
+        head_depth_cam = ObsTerm(
+            func=mdp.image,
+            params={"sensor_cfg": SceneEntityCfg("head_depth_cam"), "data_type": "distance_to_image_plane", "normalize": False}
+        )
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -349,6 +371,11 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
         # Set T1 robot
         self.scene.robot = T1_GRASP_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
+        # Add head cameras (RealSense D455) with 424x240 resolution
+        cameras = get_default_t1_head_cameras(resolution=(240, 424), include_depth=True, include_stereo=False)
+        self.scene.head_rgb_cam = cameras["head_rgb_cam"]
+        self.scene.head_depth_cam = cameras["head_depth_cam"]
+
         # Add cubes to scene (on table surface at z=1.0703)
         self.scene.cube_1 = RigidObjectCfg(
             prim_path="{ENV_REGEX_NS}/Cube_1",
@@ -391,3 +418,7 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
                 ),
             }
         )
+
+        # Camera rendering settings for observation recording
+        self.rerender_on_reset = True
+        self.image_obs_list = ["head_rgb_cam", "head_depth_cam"]
