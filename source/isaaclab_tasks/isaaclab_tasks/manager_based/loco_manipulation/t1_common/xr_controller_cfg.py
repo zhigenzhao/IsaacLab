@@ -19,6 +19,7 @@ def create_t1_xr_controller_cfg(
     collision_detection_distance: float = 0.10,
     velocity_limit_factor: float = 0.7,
     reference_frame: str = "trunk",
+    enable_head_tracking: bool = True,
 ) -> XRControllerDeviceCfg:
     """Create standard T1 XR controller configuration.
 
@@ -29,6 +30,7 @@ def create_t1_xr_controller_cfg(
         collision_detection_distance: Distance for collision detection
         velocity_limit_factor: Velocity limit factor for IK
         reference_frame: Reference frame for relative control
+        enable_head_tracking: Enable head tracking with HMD orientation (via direct joint control)
 
     Returns:
         Configured XR controller device
@@ -50,12 +52,8 @@ def create_t1_xr_controller_cfg(
                 output_joint_positions_only=True,
                 sim_device=sim_device,
                 reference_frame=reference_frame,
-                # Head tracking configuration
-                enable_head_tracking=True,
-                head_task_orientation_cost=8.0,  # Increased to overpower other tasks
-                head_task_position_cost=0.0,
-                head_task_lm_damping=0.03,
-                # Motion tracker configuration for right elbow tracking
+                enable_head_tracking=enable_head_tracking,
+                # Motion tracker configuration for elbow tracking
                 motion_tracker_config={
                     "right_arm": {
                         "serial": "PC2310MLK6140013G",

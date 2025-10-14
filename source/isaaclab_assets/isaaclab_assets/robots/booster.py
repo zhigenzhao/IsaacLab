@@ -254,7 +254,7 @@ T1_REACH_CFG = ArticulationCfg(
 
 T1_GRASP_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path="source/isaaclab_assets/isaaclab_assets/robots/USD/t1/t1_with_7dof_arms_upper_body_gripper_mimic_joint.usd",
+        usd_path="source/isaaclab_assets/isaaclab_assets/robots/USD/t1/t1_29dof_1014_upper.usd",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
@@ -346,7 +346,7 @@ T1_GRASP_CFG = ArticulationCfg(
             effort_limit_sim=50,
             velocity_limit_sim=60,
             stiffness=50,
-            damping=0.1,
+            damping=1,
             armature=0.001,
         ),
         "grippers_mimic": ImplicitActuatorCfg(
@@ -354,7 +354,7 @@ T1_GRASP_CFG = ArticulationCfg(
             effort_limit_sim=50,
             velocity_limit_sim=60,
             stiffness=50,
-            damping=0.1,
+            damping=1,
             armature=0.001,
         ),
     },

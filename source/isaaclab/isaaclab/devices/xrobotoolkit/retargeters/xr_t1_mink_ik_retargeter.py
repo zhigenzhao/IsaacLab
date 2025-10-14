@@ -703,8 +703,6 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         yaw = euler_angles[2]   # Rotation around Z-axis -> AAHead_yaw
         pitch = euler_angles[1]  # Rotation around Y-axis -> Head_pitch
 
-        print(f"Extracted head angles from headset: yaw={yaw:.3f}, pitch={pitch:.3f}")
-
         # Apply joint limits
         # AAHead_yaw: range="-1.57 1.57" (-90° to +90°)
         # Head_pitch: range="-0.35 1.22" (-20° to +70°)
