@@ -74,7 +74,7 @@ class T1StackSceneCfg(InteractiveSceneCfg):
 # Reset state for T1
 ##
 PREP_STATE = ArticulationCfg.InitialStateCfg(
-    pos=(0.0, 0.0, 0.7),
+    pos=(0.0, 0.0, 1.2),
     joint_pos={
         "AAHead_yaw": 0.0,
         "Head_pitch": 0.0,
@@ -193,19 +193,30 @@ class ObservationsCfg:
         cube_positions = ObsTerm(func=t1_stack_mdp.cube_positions_in_robot_frame)
         cube_orientations = ObsTerm(func=t1_stack_mdp.cube_orientations_in_robot_frame)
 
-        # Camera observations
-        head_rgb_cam = ObsTerm(
-            func=mdp.image,
-            params={"sensor_cfg": SceneEntityCfg("head_rgb_cam"), "data_type": "rgb", "normalize": False}
-        )
-        head_depth_cam = ObsTerm(
-            func=mdp.image,
-            params={"sensor_cfg": SceneEntityCfg("head_depth_cam"), "data_type": "distance_to_image_plane", "normalize": False}
-        )
-
         def __post_init__(self):
             self.enable_corruption = False
             self.concatenate_terms = False
+
+            # Add camera observations only if cameras are enabled
+            # This is determined at environment creation time based on --enable_cameras flag
+            try:
+                import carb
+                carb_settings = carb.settings.get_settings()
+                cameras_enabled = bool(carb_settings.get("/isaaclab/render/offscreen"))
+
+                if cameras_enabled:
+                    # Add camera observation terms dynamically
+                    self.head_rgb_cam = ObsTerm(
+                        func=mdp.image,
+                        params={"sensor_cfg": SceneEntityCfg("head_rgb_cam"), "data_type": "rgb", "normalize": False}
+                    )
+                    self.head_depth_cam = ObsTerm(
+                        func=mdp.image,
+                        params={"sensor_cfg": SceneEntityCfg("head_depth_cam"), "data_type": "distance_to_image_plane", "normalize": False}
+                    )
+            except Exception:
+                # If carb settings are not available, cameras are not enabled
+                pass
 
     @configclass
     class SubtaskCfg(ObsGroup):
@@ -359,7 +370,7 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
 
         # Enable DLSS rendering
         self.sim.render = sim_utils.RenderCfg(
-            enable_dlssg=True,
+            enable_dlssg=False,
             dlss_mode=0,
             rendering_mode="balanced"
         )
@@ -371,10 +382,15 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
         # Set T1 robot
         self.scene.robot = T1_GRASP_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
-        # Add head cameras (RealSense D455) with 424x240 resolution
-        cameras = get_default_t1_head_cameras(resolution=(240, 424), include_depth=True, include_stereo=False)
-        self.scene.head_rgb_cam = cameras["head_rgb_cam"]
-        self.scene.head_depth_cam = cameras["head_depth_cam"]
+        # Check if cameras should be enabled (only when --enable_cameras flag is set)
+        # This improves performance when cameras are not needed
+        self._cameras_enabled = self._check_cameras_enabled()
+
+        # Add head cameras only if enabled (RealSense D455) with 424x240 resolution
+        if self._cameras_enabled:
+            cameras = get_default_t1_head_cameras(resolution=(240, 424), include_depth=True, include_stereo=False)
+            self.scene.head_rgb_cam = cameras["head_rgb_cam"]
+            self.scene.head_depth_cam = cameras["head_depth_cam"]
 
         # Add cubes to scene (on table surface at z=1.0703)
         self.scene.cube_1 = RigidObjectCfg(
@@ -419,6 +435,25 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
             }
         )
 
-        # Camera rendering settings for observation recording
-        self.rerender_on_reset = True
-        self.image_obs_list = ["head_rgb_cam", "head_depth_cam"]
+        # Camera rendering settings for observation recording (only if cameras are enabled)
+        if self._cameras_enabled:
+            self.rerender_on_reset = True
+            self.image_obs_list = ["head_rgb_cam", "head_depth_cam"]
+
+    def _check_cameras_enabled(self) -> bool:
+        """Check if cameras are enabled via carb settings.
+
+        Cameras are only enabled when the --enable_cameras flag is provided to the AppLauncher.
+        This flag sets the /isaaclab/render/offscreen carb setting to True.
+
+        Returns:
+            bool: True if cameras are enabled, False otherwise.
+        """
+        try:
+            import carb
+            carb_settings = carb.settings.get_settings()
+            # Check if offscreen rendering is enabled (set by --enable_cameras flag)
+            return bool(carb_settings.get("/isaaclab/render/offscreen"))
+        except Exception:
+            # If carb settings are not available yet, default to False
+            return False
