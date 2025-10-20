@@ -75,6 +75,7 @@ class T1StackSceneCfg(InteractiveSceneCfg):
 ##
 PREP_STATE = ArticulationCfg.InitialStateCfg(
     pos=(0.0, 0.0, 1.2),
+    rot=(1, 0.0, 0.0, 0),
     joint_pos={
         "AAHead_yaw": 0.0,
         "Head_pitch": 0.0,
@@ -103,9 +104,10 @@ def reset_to_prep(env: ManagerBasedRLEnv, env_ids: torch.Tensor, asset_cfg: Scen
         idx = asset.find_joints(joint_name, preserve_order=True)[0]
         joint_pos[env_ids, idx] = target_pos
 
-    # Reset robot root position
+    # Reset robot root position and orientation
     root_state = asset.data.default_root_state.clone()
     root_state[env_ids, :3] = torch.tensor(PREP_STATE.pos, device=asset.device)
+    root_state[env_ids, 3:7] = torch.tensor(PREP_STATE.rot, device=asset.device)
 
     # Apply the reset
     asset.write_root_state_to_sim(root_state, env_ids=env_ids)

@@ -105,7 +105,8 @@ def object_grasped_by_hand(
     obj: RigidObject = env.scene[object_cfg.name]
 
     # Get hand position from articulation body data
-    hand_link = f"{hand}_hand_link"
+    # The T1 gripper uses "left_base_link" and "right_base_link" as the hand bodies
+    hand_link = f"{hand}_base_link"
     body_ids = robot.find_bodies(hand_link)[0]
     hand_pos = robot.data.body_pos_w[:, body_ids]
 

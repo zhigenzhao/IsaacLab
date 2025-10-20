@@ -271,7 +271,7 @@ class T1TeleopManipulationEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physx.solver_type = 1
         import isaaclab.sim as sim_utils
         self.sim.render = sim_utils.RenderCfg(
-            enable_dlssg=True,
+            enable_dlssg=False,
             dlss_mode=0,  # Set DLSS to Performance Mode
             rendering_mode="balanced"
         )
