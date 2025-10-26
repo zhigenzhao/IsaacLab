@@ -30,6 +30,7 @@ optional arguments:
 # Standard library imports
 import argparse
 import contextlib
+from datetime import datetime
 
 # Isaac Lab AppLauncher
 from isaaclab.app import AppLauncher
@@ -151,21 +152,27 @@ def setup_output_directories() -> tuple[str, str]:
     """Set up output directories for saving demonstrations.
 
     Creates the output directory if it doesn't exist and extracts the file name
-    from the dataset file path.
+    from the dataset file path. Adds a timestamp to the filename to prevent overwriting.
 
     Returns:
         tuple[str, str]: A tuple containing:
             - output_dir: The directory path where the dataset will be saved
-            - output_file_name: The filename (without extension) for the dataset
+            - output_file_name: The filename (without extension) with timestamp for the dataset
     """
     # get directory path and file name (without extension) from cli arguments
     output_dir = os.path.dirname(args_cli.dataset_file)
     output_file_name = os.path.splitext(os.path.basename(args_cli.dataset_file))[0]
 
+    # Add timestamp to filename to prevent overwriting
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_file_name = f"{output_file_name}_{timestamp}"
+
     # create directory if it does not exist
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         print(f"Created output directory: {output_dir}")
+
+    print(f"Dataset will be saved as: {output_file_name}.hdf5")
 
     return output_dir, output_file_name
 
