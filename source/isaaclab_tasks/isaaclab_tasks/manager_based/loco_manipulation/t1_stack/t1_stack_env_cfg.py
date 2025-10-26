@@ -74,7 +74,7 @@ class T1StackSceneCfg(InteractiveSceneCfg):
 # Reset state for T1
 ##
 PREP_STATE = ArticulationCfg.InitialStateCfg(
-    pos=(0.1, 0.0, 1.2),
+    pos=(0.05, 0.0, 1.2),
     rot=(1, 0.0, 0.0, 0),
     joint_pos={
         "AAHead_yaw": 0.0,
@@ -308,7 +308,7 @@ class EventCfg:
         func=t1_stack_mdp.randomize_object_pose,
         mode="reset",
         params={
-            "pose_range": {"x": (0.4, 0.6), "y": (-0.15, 0.15), "z": (1.0703, 1.0703), "yaw": (-1.0, 1.0)},
+            "pose_range": {"x": (0.4, 0.5), "y": (-0.15, 0.15), "z": (1.0703, 1.0703), "yaw": (-1.0, 1.0)},
             "min_separation": 0.1,
             "asset_cfgs": [SceneEntityCfg("cube_1"), SceneEntityCfg("cube_2"), SceneEntityCfg("cube_3")],
         },

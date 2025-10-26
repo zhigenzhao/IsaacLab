@@ -7,8 +7,8 @@
 
 from isaaclab.devices.xrobotoolkit import XRControllerDeviceCfg
 from isaaclab.devices.xrobotoolkit.retargeters import (
-    XRT1MinkIKRetargeterCfg,
     XRGripperRetargeterCfg,
+    XRT1MinkIKRetargeterCfg,
 )
 
 
@@ -44,7 +44,7 @@ def create_t1_xr_controller_cfg(
         retargeters=[
             XRT1MinkIKRetargeterCfg(
                 xml_path="source/isaaclab_assets/isaaclab_assets/robots/xmls/scene_t1_ik.xml",
-                headless=False,
+                headless=True,
                 ik_rate_hz=ik_rate_hz,
                 collision_avoidance_distance=collision_avoidance_distance,
                 collision_detection_distance=collision_detection_distance,
