@@ -19,9 +19,9 @@ RealSense D455 Camera Specifications:
 """
 
 import isaaclab.sim as sim_utils
-from isaaclab.sensors import CameraCfg
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.sensors import CameraCfg
 
 ##
 # Camera Configurations
@@ -42,26 +42,26 @@ class T1HeadCameraCfg:
 
     @staticmethod
     def create_head_rgb_camera(
-        prim_path: str = "{ENV_REGEX_NS}/Robot/H2/head_rgb_cam",
+        prim_path: str = "{ENV_REGEX_NS}/Robot/H2/Realsense/RSD455/Camera_OmniVision_OV9782_Color/head_rgb_cam",
         height: int = 480,
         width: int = 640,
         update_period: float = 0.0,
         data_types: list[str] | None = None,
     ) -> CameraCfg:
-        """Create RGB color camera configuration for the T1 head.
+        """Create RGB camera as child of USD camera prim to inherit its transform.
 
-        This camera is positioned at the RealSense D455's color camera location,
-        offset by (0, 0.0115, 0) from the H2 link origin.
+        Spawns a new camera prim as a child of the RealSense USD camera prim,
+        so it automatically inherits the correct position and orientation.
 
         Args:
-            prim_path: USD path for the camera prim. Defaults to H2 link.
+            prim_path: Camera prim path as child of USD camera.
             height: Image height in pixels. Default 480 (VGA resolution).
             width: Image width in pixels. Default 640 (VGA resolution).
             update_period: Camera update period in seconds. 0.0 = every frame.
             data_types: List of data types to capture. Default ["rgb"].
 
         Returns:
-            CameraCfg: Camera configuration for the head RGB camera.
+            CameraCfg: Camera configuration that inherits USD camera transform.
         """
         if data_types is None:
             data_types = ["rgb"]
@@ -76,42 +76,35 @@ class T1HeadCameraCfg:
                 focal_length=1.93,
                 focus_distance=400.0,
                 horizontal_aperture=3.896,
-                clipping_range=(0.1, 10.0),  # RealSense D455 range: 0.1m - 10m
+                clipping_range=(0.1, 10.0),
             ),
             offset=CameraCfg.OffsetCfg(
-                # Color camera is offset by 11.5mm in Y direction from H2 origin
-                # Transform accounts for ROS convention (X forward, Y left, Z up)
-                pos=(0.0, 0.0115, 0.0),
-                # Rotation from USD local transform (camera looks forward)
-                # Original: ((-2.2e-16, 1, 2.7e-16, 0), (5e-16, -2.2e-16, 1, 0), (1, 2.7e-16, -4.4e-16, 0))
-                # Simplified: 90° rotation around Y, then 90° around Z
-                rot=(0.5, -0.5, 0.5, -0.5),  # Camera points forward in ROS convention
-                convention="ros",
+                convention="opengl",
             ),
         )
 
     @staticmethod
     def create_head_depth_camera(
-        prim_path: str = "{ENV_REGEX_NS}/Robot/H2/head_depth_cam",
+        prim_path: str = "{ENV_REGEX_NS}/Robot/H2/Realsense/RSD455/Camera_Pseudo_Depth/head_depth_cam",
         height: int = 480,
         width: int = 640,
         update_period: float = 0.0,
         data_types: list[str] | None = None,
     ) -> CameraCfg:
-        """Create depth camera configuration for the T1 head.
+        """Create depth camera as child of USD camera prim to inherit its transform.
 
-        This camera is positioned at the RealSense D455's depth sensor location,
-        at the H2 link origin (0, 0, 0).
+        Spawns a new camera prim as a child of the RealSense USD camera prim,
+        so it automatically inherits the correct position and orientation.
 
         Args:
-            prim_path: USD path for the camera prim. Defaults to H2 link.
+            prim_path: Camera prim path as child of USD camera.
             height: Image height in pixels. Default 480 (VGA resolution).
             width: Image width in pixels. Default 640 (VGA resolution).
             update_period: Camera update period in seconds. 0.0 = every frame.
             data_types: List of data types to capture. Default ["distance_to_image_plane"].
 
         Returns:
-            CameraCfg: Camera configuration for the head depth camera.
+            CameraCfg: Camera configuration that inherits USD camera transform.
         """
         if data_types is None:
             data_types = ["distance_to_image_plane"]
@@ -126,39 +119,35 @@ class T1HeadCameraCfg:
                 focal_length=1.93,
                 focus_distance=400.0,
                 horizontal_aperture=3.896,
-                clipping_range=(0.1, 10.0),  # RealSense D455 depth range
+                clipping_range=(0.1, 10.0),
             ),
             offset=CameraCfg.OffsetCfg(
-                # Depth camera is at H2 origin
-                pos=(0.0, 0.0, 0.0),
-                # Rotation for depth camera pointing forward
-                rot=(0.5, -0.5, 0.5, -0.5),
-                convention="ros",
+                convention="opengl",
             ),
         )
 
     @staticmethod
     def create_head_stereo_left_camera(
-        prim_path: str = "{ENV_REGEX_NS}/Robot/H2/head_stereo_left_cam",
+        prim_path: str = "{ENV_REGEX_NS}/Robot/H2/Realsense/RSD455/Camera_OmniVision_OV9782_Left/head_stereo_left_cam",
         height: int = 480,
         width: int = 640,
         update_period: float = 0.0,
         data_types: list[str] | None = None,
     ) -> CameraCfg:
-        """Create left stereo camera configuration for the T1 head.
+        """Create left stereo camera as child of USD camera prim to inherit its transform.
 
-        This camera is positioned at the RealSense D455's left stereo camera location,
-        offset by (0, -0.0475, 0) from the H2 link origin (47.5mm baseline).
+        Spawns a new camera prim as a child of the RealSense USD camera prim,
+        so it automatically inherits the correct position and orientation.
 
         Args:
-            prim_path: USD path for the camera prim.
+            prim_path: Camera prim path as child of USD camera.
             height: Image height in pixels. Default 480 (VGA resolution).
             width: Image width in pixels. Default 640 (VGA resolution).
             update_period: Camera update period in seconds. 0.0 = every frame.
             data_types: List of data types to capture. Default ["rgb"].
 
         Returns:
-            CameraCfg: Camera configuration for the left stereo camera.
+            CameraCfg: Camera configuration that inherits USD camera transform.
         """
         if data_types is None:
             data_types = ["rgb"]
@@ -176,35 +165,32 @@ class T1HeadCameraCfg:
                 clipping_range=(0.1, 10.0),
             ),
             offset=CameraCfg.OffsetCfg(
-                # Left camera is offset by -47.5mm in Y direction
-                pos=(0.0, -0.0475, 0.0),
-                rot=(0.5, -0.5, 0.5, -0.5),
-                convention="ros",
+                convention="opengl",
             ),
         )
 
     @staticmethod
     def create_head_stereo_right_camera(
-        prim_path: str = "{ENV_REGEX_NS}/Robot/H2/head_stereo_right_cam",
+        prim_path: str = "{ENV_REGEX_NS}/Robot/H2/Realsense/RSD455/Camera_OmniVision_OV9782_Right/head_stereo_right_cam",
         height: int = 480,
         width: int = 640,
         update_period: float = 0.0,
         data_types: list[str] | None = None,
     ) -> CameraCfg:
-        """Create right stereo camera configuration for the T1 head.
+        """Create right stereo camera as child of USD camera prim to inherit its transform.
 
-        This camera is positioned at the RealSense D455's right stereo camera location,
-        offset by (0, 0.0475, 0) from the H2 link origin (47.5mm baseline).
+        Spawns a new camera prim as a child of the RealSense USD camera prim,
+        so it automatically inherits the correct position and orientation.
 
         Args:
-            prim_path: USD path for the camera prim.
+            prim_path: Camera prim path as child of USD camera.
             height: Image height in pixels. Default 480 (VGA resolution).
             width: Image width in pixels. Default 640 (VGA resolution).
             update_period: Camera update period in seconds. 0.0 = every frame.
             data_types: List of data types to capture. Default ["rgb"].
 
         Returns:
-            CameraCfg: Camera configuration for the right stereo camera.
+            CameraCfg: Camera configuration that inherits USD camera transform.
         """
         if data_types is None:
             data_types = ["rgb"]
@@ -222,10 +208,7 @@ class T1HeadCameraCfg:
                 clipping_range=(0.1, 10.0),
             ),
             offset=CameraCfg.OffsetCfg(
-                # Right camera is offset by +47.5mm in Y direction
-                pos=(0.0, 0.0475, 0.0),
-                rot=(0.5, -0.5, 0.5, -0.5),
-                convention="ros",
+                convention="opengl",
             ),
         )
 

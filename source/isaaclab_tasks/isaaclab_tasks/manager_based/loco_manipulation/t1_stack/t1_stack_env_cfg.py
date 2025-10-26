@@ -5,33 +5,33 @@
 
 """T1 humanoid cube stacking environment with XR teleoperation."""
 
-import torch
 from dataclasses import MISSING
 
+import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg, Articulation
-from isaaclab.envs import ManagerBasedRLEnvCfg, ManagerBasedRLEnv
+import torch
+from isaaclab.assets import Articulation, ArticulationCfg, AssetBaseCfg, RigidObjectCfg
+from isaaclab.devices.device_base import DevicesCfg
+from isaaclab.devices.keyboard import Se3KeyboardCfg
+from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
-from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.noise import GaussianNoiseCfg as Gnoise
-from isaaclab.devices.device_base import DevicesCfg
-from isaaclab.devices.keyboard import Se3KeyboardCfg
 
-import isaaclab.envs.mdp as mdp
-from . import t1_stack_mdp
 from ..t1_common.joint_names import T1_UPPER_BODY_JOINTS, T1_UPPER_BODY_WITH_GRIPPERS
-from ..t1_common.xr_controller_cfg import create_t1_xr_controller_cfg
 from ..t1_common.physics_constants import MANIPULATION_OBJECT_PROPERTIES, MANIPULATION_PHYSX_SETTINGS
 from ..t1_common.t1_camera_cfg import get_default_t1_head_cameras
+from ..t1_common.xr_controller_cfg import create_t1_xr_controller_cfg
+from . import t1_stack_mdp
 
 ##
 # Pre-defined configs
@@ -74,7 +74,7 @@ class T1StackSceneCfg(InteractiveSceneCfg):
 # Reset state for T1
 ##
 PREP_STATE = ArticulationCfg.InitialStateCfg(
-    pos=(0.0, 0.0, 1.2),
+    pos=(0.1, 0.0, 1.2),
     rot=(1, 0.0, 0.0, 0),
     joint_pos={
         "AAHead_yaw": 0.0,
@@ -204,7 +204,17 @@ class ObservationsCfg:
             try:
                 import carb
                 carb_settings = carb.settings.get_settings()
-                cameras_enabled = bool(carb_settings.get("/isaaclab/render/offscreen"))
+                # Check multiple settings to determine if cameras are enabled:
+                # - /isaaclab/render/offscreen: True in headless mode with cameras
+                # - /app/window/enabled: False in headless mode
+                # If window is enabled (GUI mode), we still want cameras if they exist in the scene
+                offscreen_render = bool(carb_settings.get("/isaaclab/render/offscreen"))
+                window_enabled = bool(carb_settings.get("/app/window/enabled"))
+
+                # Cameras are enabled if:
+                # 1. Offscreen rendering is enabled (headless + --enable_cameras), OR
+                # 2. Window is enabled (GUI mode, cameras always work)
+                cameras_enabled = offscreen_render or window_enabled
 
                 if cameras_enabled:
                     # Add camera observation terms dynamically
@@ -445,8 +455,9 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
     def _check_cameras_enabled(self) -> bool:
         """Check if cameras are enabled via carb settings.
 
-        Cameras are only enabled when the --enable_cameras flag is provided to the AppLauncher.
-        This flag sets the /isaaclab/render/offscreen carb setting to True.
+        Cameras are enabled in two scenarios:
+        1. When --enable_cameras flag is provided (sets /isaaclab/render/offscreen to True)
+        2. When running with GUI (window is enabled, cameras work automatically)
 
         Returns:
             bool: True if cameras are enabled, False otherwise.
@@ -454,8 +465,13 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
         try:
             import carb
             carb_settings = carb.settings.get_settings()
-            # Check if offscreen rendering is enabled (set by --enable_cameras flag)
-            return bool(carb_settings.get("/isaaclab/render/offscreen"))
+            # Check if offscreen rendering is enabled (headless + --enable_cameras)
+            offscreen_render = bool(carb_settings.get("/isaaclab/render/offscreen"))
+            # Check if window is enabled (GUI mode)
+            window_enabled = bool(carb_settings.get("/app/window/enabled"))
+
+            # Cameras are enabled if either offscreen rendering or GUI window is active
+            return offscreen_render or window_enabled
         except Exception:
             # If carb settings are not available yet, default to False
             return False
