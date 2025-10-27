@@ -195,11 +195,18 @@ def randomize_joint_by_gaussian_offset(
     mean: float = 0.0,
     std: float = 0.01,
 ):
-    """Randomize joint positions by adding Gaussian noise."""
+    """Randomize joint positions by adding Gaussian noise to current position.
+
+    NOTE: This function adds noise to the CURRENT joint positions (after any previous
+    reset events), not the default joint positions. This ensures that if reset_to_prep()
+    runs before this function, the randomization adds noise around the prep pose rather
+    than overwriting it with near-zero values.
+    """
     asset: Articulation = env.scene[asset_cfg.name]
 
-    # Get current joint positions
-    joint_pos = asset.data.default_joint_pos[env_ids].clone()
+    # Get current joint positions (not default!) to add noise to the state
+    # set by previous reset events like reset_to_prep()
+    joint_pos = asset.data.joint_pos[env_ids].clone()
 
     # Add Gaussian noise
     noise = torch.randn_like(joint_pos) * std + mean
@@ -211,8 +218,8 @@ def randomize_joint_by_gaussian_offset(
         asset.data.soft_joint_pos_limits[env_ids, :, 1],
     )
 
-    # Set joint positions
-    asset.write_joint_state_to_sim(joint_pos, asset.data.default_joint_vel[env_ids], env_ids=env_ids)
+    # Set joint positions (keep velocities at zero for reset)
+    asset.write_joint_state_to_sim(joint_pos, torch.zeros_like(asset.data.joint_vel[env_ids]), env_ids=env_ids)
 
 
 def randomize_object_pose(
