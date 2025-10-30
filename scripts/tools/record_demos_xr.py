@@ -3,24 +3,26 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 """
-Script to record demonstrations with Isaac Lab environments using XR teleoperation with state synchronization.
+Script to record demonstrations with Isaac Lab environments using XR controller teleoperation with state synchronization.
 
-This script is a modified version of record_demos.py that includes Mink IK state synchronization
-for improved tracking consistency with XR controller teleoperation. It prevents drift between
-the Mink IK solver internal state and the actual Isaac Lab simulation state.
+This script includes Mink IK state synchronization for improved tracking consistency with XR controller
+teleoperation. It prevents drift between the Mink IK solver internal state and the actual Isaac Lab
+simulation state.
 
-This script allows users to record demonstrations operated by human teleoperation for a specified task.
-The recorded demonstrations are stored as episodes in a hdf5 file. Users can specify the task, teleoperation
-device, dataset directory, and environment stepping rate through command-line arguments.
+This script allows users to record demonstrations operated by XR controller teleoperation for a specified task.
+The recorded demonstrations are stored as episodes in a hdf5 file. Users can specify the task, dataset directory,
+and environment stepping rate through command-line arguments.
+
+Only XR controller teleoperation is supported by this script.
 
 required arguments:
     --task                    Name of the task.
 
 optional arguments:
     -h, --help                Show this help message and exit
-    --teleop_device           Device for interacting with environment. (default: keyboard)
+    --teleop_device           Device for interacting with environment. (default: xr_controller, only xr_controller is supported)
     --dataset_file            File path to export recorded demos. (default: "./datasets/dataset.hdf5")
-    --step_hz                 Environment stepping rate in Hz. (default: 30)
+    --step_hz                 Environment stepping rate in Hz. (default: 30, note: rate limiting is handled by OpenXR)
     --num_demos               Number of demonstrations to record. (default: 0)
     --num_success_steps       Number of continuous steps with task success for concluding a demo as successful. (default: 10)
 """
@@ -38,7 +40,7 @@ from isaaclab.app import AppLauncher
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Record demonstrations for Isaac Lab environments.")
 parser.add_argument("--task", type=str, required=True, help="Name of the task.")
-parser.add_argument("--teleop_device", type=str, default="keyboard", help="Device for interacting with environment.")
+parser.add_argument("--teleop_device", type=str, default="xr_controller", help="Device for interacting with environment (only xr_controller is supported).")
 parser.add_argument(
     "--dataset_file", type=str, default="./datasets/dataset.hdf5", help="File path to export recorded demos."
 )
@@ -52,12 +54,6 @@ parser.add_argument(
     default=10,
     help="Number of continuous steps with task success for concluding a demo as successful. Default is 10.",
 )
-parser.add_argument(
-    "--enable_pinocchio",
-    action="store_true",
-    default=False,
-    help="Enable Pinocchio.",
-)
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -69,13 +65,6 @@ if args_cli.task is None:
     parser.error("--task is required")
 
 app_launcher_args = vars(args_cli)
-
-if args_cli.enable_pinocchio:
-    # Import pinocchio before AppLauncher to force the use of the version installed by IsaacLab and not the one installed by Isaac Sim
-    # pinocchio is required by the Pink IK controllers and the GR1T2 retargeter
-    import pinocchio  # noqa: F401
-if "handtracking" in args_cli.teleop_device.lower():
-    app_launcher_args["xr"] = True
 
 # launch the simulator
 app_launcher = AppLauncher(args_cli)
@@ -94,15 +83,10 @@ import torch
 import omni.log
 import omni.ui as ui
 
-from isaaclab.devices import Se3Keyboard, Se3KeyboardCfg, Se3SpaceMouse, Se3SpaceMouseCfg
-from isaaclab.devices.openxr import remove_camera_configs
 from isaaclab.devices.teleop_device_factory import create_teleop_device
 
 import isaaclab_mimic.envs  # noqa: F401
 from isaaclab_mimic.ui.instruction_display import InstructionDisplay, show_subtask_instructions
-
-if args_cli.enable_pinocchio:
-    import isaaclab_tasks.manager_based.manipulation.pick_place  # noqa: F401
 
 from collections.abc import Callable
 
@@ -216,10 +200,9 @@ def create_environment_config(
             " Will not be able to mark recorded demos as successful."
         )
 
-    if args_cli.xr:
-        # Keep cameras enabled in XR mode for demonstration recording
-        # Cameras are needed to record visual observations
-        env_cfg.sim.render.antialiasing_mode = "DLSS"
+    # Enable DLSS antialiasing for XR controller
+    # Cameras are enabled for demonstration recording to record visual observations
+    env_cfg.sim.render.antialiasing_mode = "DLSS"
 
     # modify configuration such that the environment runs indefinitely until
     # the goal is reached or other termination conditions are met
@@ -256,49 +239,37 @@ def create_environment(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg) -> gym.En
 
 
 def setup_teleop_device(callbacks: dict[str, Callable]) -> object:
-    """Set up the teleoperation device based on configuration.
+    """Set up the XR controller teleoperation device.
 
-    Attempts to create a teleoperation device based on the environment configuration.
-    Falls back to default devices if the specified device is not found in the configuration.
+    Creates an XR controller device from the environment configuration.
 
     Args:
         callbacks: Dictionary mapping callback keys to functions that will be
                    attached to the teleop device
 
     Returns:
-        object: The configured teleoperation device interface
+        object: The configured XR controller teleoperation device interface
 
     Raises:
-        Exception: If teleop device creation fails
+        SystemExit: If teleop device creation fails or xr_controller is not configured
     """
-    teleop_interface = None
     try:
-        if hasattr(env_cfg, "teleop_devices") and args_cli.teleop_device in env_cfg.teleop_devices.devices:
-            teleop_interface = create_teleop_device(args_cli.teleop_device, env_cfg.teleop_devices.devices, callbacks)
-        else:
-            omni.log.warn(f"No teleop device '{args_cli.teleop_device}' found in environment config. Creating default.")
-            # Create fallback teleop device
-            if args_cli.teleop_device.lower() == "keyboard":
-                teleop_interface = Se3Keyboard(Se3KeyboardCfg(pos_sensitivity=0.2, rot_sensitivity=0.5))
-            elif args_cli.teleop_device.lower() == "spacemouse":
-                teleop_interface = Se3SpaceMouse(Se3SpaceMouseCfg(pos_sensitivity=0.2, rot_sensitivity=0.5))
-            else:
-                omni.log.error(f"Unsupported teleop device: {args_cli.teleop_device}")
-                omni.log.error("Supported devices: keyboard, spacemouse, handtracking")
-                exit(1)
+        if not hasattr(env_cfg, "teleop_devices") or args_cli.teleop_device not in env_cfg.teleop_devices.devices:
+            omni.log.error(f"No '{args_cli.teleop_device}' found in environment config.")
+            omni.log.error("Ensure the environment has XR controller support configured.")
+            exit(1)
 
-            # Add callbacks to fallback device
-            for key, callback in callbacks.items():
-                teleop_interface.add_callback(key, callback)
+        teleop_interface = create_teleop_device(args_cli.teleop_device, env_cfg.teleop_devices.devices, callbacks)
+
+        if teleop_interface is None:
+            omni.log.error(f"Failed to create {args_cli.teleop_device} interface")
+            exit(1)
+
+        return teleop_interface
+
     except Exception as e:
         omni.log.error(f"Failed to create teleop device: {e}")
         exit(1)
-
-    if teleop_interface is None:
-        omni.log.error("Failed to create teleop interface")
-        exit(1)
-
-    return teleop_interface
 
 
 def setup_ui(label_text: str, env: gym.Env) -> InstructionDisplay:
@@ -314,13 +285,12 @@ def setup_ui(label_text: str, env: gym.Env) -> InstructionDisplay:
     Returns:
         InstructionDisplay: The configured instruction display object
     """
-    instruction_display = InstructionDisplay(args_cli.teleop_device)
-    if not args_cli.xr:
-        window = EmptyWindow(env, "Instruction")
-        with window.ui_window_elements["main_vstack"]:
-            demo_label = ui.Label(label_text)
-            subtask_label = ui.Label("")
-            instruction_display.set_labels(subtask_label, demo_label)
+    instruction_display = InstructionDisplay(xr=False)
+    window = EmptyWindow(env, "Instruction")
+    with window.ui_window_elements["main_vstack"]:
+        demo_label = ui.Label(label_text)
+        subtask_label = ui.Label("")
+        instruction_display.set_labels(subtask_label, demo_label)
 
     return instruction_display
 
@@ -432,7 +402,8 @@ def run_simulation_loop(
     current_recorded_demo_count = 0
     success_step_count = 0
     should_reset_recording_instance = False
-    running_recording_instance = not args_cli.xr
+    # XR controller starts in paused state
+    running_recording_instance = False
 
     # Callback closures for the teleop device
     def reset_recording_instance():
@@ -546,17 +517,22 @@ def run_simulation_loop(
             # Expand to batch dimension
             actions = action.repeat(env.num_envs, 1)
 
-            # Perform action on environment
-            if running_recording_instance:
-                # Compute actions based on environment
-                obv = env.step(actions)
-                if subtasks is not None:
-                    if subtasks == {}:
-                        subtasks = obv[0].get("subtask_terms")
-                    elif subtasks:
-                        show_subtask_instructions(instruction_display, subtasks, obv, env.cfg)
-            else:
-                env.sim.render()
+            # Always step the environment to provide visual feedback
+            # Recording state only controls whether the data is saved
+            obv = env.step(actions)
+
+            # If not recording, clear the episode data to prevent accumulation
+            # This allows the robot to move without recording unwanted data
+            if not running_recording_instance:
+                # Clear the current episode data for env 0
+                env.recorder_manager.get_episode(0).data.clear()
+
+            # Update subtask instructions
+            if subtasks is not None:
+                if subtasks == {}:
+                    subtasks = obv[0].get("subtask_terms")
+                elif subtasks:
+                    show_subtask_instructions(instruction_display, subtasks, obv, env.cfg)
 
             # Check for success condition
             success_step_count, success_reset_needed = process_success_condition(env, success_term, success_step_count)
@@ -614,15 +590,8 @@ def main() -> None:
     Raises:
         Exception: Propagates exceptions from any of the called functions
     """
-    # if handtracking is selected, rate limiting is achieved via OpenXR
-    if args_cli.xr:
-        rate_limiter = None
-        from isaaclab.ui.xr_widgets import TeleopVisualizationManager, XRVisualization
-
-        # Assign the teleop visualization manager to the visualization system
-        XRVisualization.assign_manager(TeleopVisualizationManager)
-    else:
-        rate_limiter = RateLimiter(args_cli.step_hz)
+    # XR controller mode: rate limiting is achieved via OpenXR, so disable rate_limiter
+    rate_limiter = None
 
     # Set up output directories
     output_dir, output_file_name = setup_output_directories()
