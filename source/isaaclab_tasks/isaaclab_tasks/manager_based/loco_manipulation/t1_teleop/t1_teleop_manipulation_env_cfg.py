@@ -178,7 +178,9 @@ class RewardCfg:
 
 @configclass
 class RecorderCfg(ActionStateRecorderManagerCfg):
-    record_post_step_commands: PostStepCommandRecorderCfg = PostStepCommandRecorderCfg()
+    record_post_step_commands: PostStepCommandRecorderCfg = PostStepCommandRecorderCfg(
+        recording_terms=["base_velocity"]
+    )
 
 
 ##
