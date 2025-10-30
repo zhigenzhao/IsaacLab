@@ -42,6 +42,12 @@ class XRT1GMRRetargeterCfg(RetargeterCfg):
     viewer_fps: int = 30
     """Frames per second for MuJoCo viewer update (when headless=False)."""
 
+    use_threading: bool = True
+    """If True, run GMR retargeting in a background thread for non-blocking operation."""
+
+    thread_rate_hz: float = 90.0
+    """Update rate for background GMR thread in Hz (when use_threading=True)."""
+
 
 class XRT1GMRRetargeter(RetargeterBase):
     """T1 Upper Body GMR Retargeter - Wrapper for full-body GMR with upper body extraction.
@@ -83,6 +89,8 @@ class XRT1GMRRetargeter(RetargeterBase):
             headless=cfg.headless,
             show_human_skeleton=cfg.show_human_skeleton,
             viewer_fps=cfg.viewer_fps,
+            use_threading=cfg.use_threading,
+            thread_rate_hz=cfg.thread_rate_hz,
             sim_device=cfg.sim_device,
         )
         self._gmr_retargeter = XRGMRRetargeter(gmr_cfg)

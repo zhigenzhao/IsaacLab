@@ -6,6 +6,7 @@
 """XRoboToolkit controller retargeter using GMR (General Motion Retargeting) for full-body control."""
 
 import numpy as np
+import threading
 import torch
 from dataclasses import dataclass
 from enum import Enum
@@ -13,6 +14,13 @@ from scipy.spatial.transform import Rotation as R
 from typing import Any
 
 from isaaclab.devices.retargeter_base import RetargeterBase, RetargeterCfg
+
+# Import rate limiter for threading
+try:
+    from loop_rate_limiters import RateLimiter
+    RATE_LIMITER_AVAILABLE = True
+except ImportError:
+    RATE_LIMITER_AVAILABLE = False
 
 # Import GMR library
 try:
@@ -115,6 +123,12 @@ class XRGMRRetargeterCfg(RetargeterCfg):
     viewer_fps: int = 30
     """Frames per second for MuJoCo viewer update (when headless=False)."""
 
+    use_threading: bool = True
+    """If True, run GMR retargeting in a background thread for non-blocking operation."""
+
+    thread_rate_hz: float = 90.0
+    """Update rate for background GMR thread in Hz (when use_threading=True)."""
+
 
 class XRGMRRetargeter(RetargeterBase):
     """Retargets XR full-body tracking to robot using GMR (General Motion Retargeting).
@@ -148,6 +162,14 @@ class XRGMRRetargeter(RetargeterBase):
         if not GMR_AVAILABLE:
             raise RuntimeError("GMR library not available. Install from /path/to/GMR repository.")
 
+        # Check threading dependencies
+        if cfg.use_threading and not RATE_LIMITER_AVAILABLE:
+            raise RuntimeError(
+                "Threading mode requires loop_rate_limiters package. "
+                "Install with: pip install loop-rate-limiters\n"
+                "Or disable threading: use_threading=False"
+            )
+
         # Store configuration
         self._robot_type = cfg.robot_type
         self._use_ground_alignment = cfg.use_ground_alignment
@@ -157,6 +179,8 @@ class XRGMRRetargeter(RetargeterBase):
         self._headless = cfg.headless
         self._show_human_skeleton = cfg.show_human_skeleton
         self._viewer_fps = cfg.viewer_fps
+        self._use_threading = cfg.use_threading
+        self._thread_rate_hz = cfg.thread_rate_hz
 
         # Lazy initialization (wait for first frame to estimate height if needed)
         self._gmr = None
@@ -168,15 +192,39 @@ class XRGMRRetargeter(RetargeterBase):
         # Cache for last valid output
         self._last_valid_output = None
 
+        # Threading infrastructure
+        if self._use_threading:
+            self.datalock = threading.RLock()
+            self.is_running = False
+            self.is_ready = False
+            self._input_body_joints = {}
+            self._output_qpos = None
+            self._gmr_thread = None
+
         print(f"[XRGMRRetargeter] Initialized for robot: {self._robot_type}")
         print(f"[XRGMRRetargeter] Output format: {self._output_format.value}")
         print(f"[XRGMRRetargeter] Ground alignment: {self._use_ground_alignment}")
         print(f"[XRGMRRetargeter] Headless mode: {self._headless}")
+        print(f"[XRGMRRetargeter] Threading mode: {self._use_threading}")
+        if self._use_threading:
+            print(f"[XRGMRRetargeter] Thread rate: {self._thread_rate_hz} Hz")
         if self._human_height is not None:
             print(f"[XRGMRRetargeter] Using specified human height: {self._human_height:.2f}m")
 
     def __del__(self):
-        """Destructor to clean up viewer resources."""
+        """Destructor to clean up thread and viewer resources."""
+        # Stop background thread if running
+        if self._use_threading and hasattr(self, 'is_running'):
+            self.is_running = False
+            if self._gmr_thread is not None and self._gmr_thread.is_alive():
+                print("[XRGMRRetargeter] Stopping background thread...")
+                self._gmr_thread.join(timeout=2.0)
+                if self._gmr_thread.is_alive():
+                    print("[XRGMRRetargeter] Warning: Thread did not stop cleanly")
+                else:
+                    print("[XRGMRRetargeter] Thread stopped")
+
+        # Close viewer if active
         if self._viewer is not None:
             try:
                 self._viewer.close()
@@ -233,6 +281,90 @@ class XRGMRRetargeter(RetargeterBase):
 
         self._initialized = True
         print("[XRGMRRetargeter] GMR initialized successfully")
+
+    def _start_gmr_thread(self):
+        """Start the background GMR retargeting thread.
+
+        The thread continuously runs GMR retargeting at a fixed rate,
+        reading from _input_body_joints and writing to _output_qpos.
+        """
+        if not self._use_threading:
+            return
+
+        self.is_running = True
+        self._gmr_thread = threading.Thread(target=self._gmr_loop, name="GMRThread", daemon=True)
+        self._gmr_thread.start()
+        print(f"[XRGMRRetargeter] Background thread started at {self._thread_rate_hz} Hz")
+
+    def _gmr_loop(self):
+        """Main loop for background GMR retargeting thread.
+
+        This method runs continuously at the configured rate, performing:
+        1. Read input body_joints from shared buffer
+        2. Transform to GMR format
+        3. Initialize GMR on first frame
+        4. Run GMR retargeting
+        5. Update MuJoCo viewer (if active)
+        6. Write output qpos to shared buffer
+
+        All shared buffer access is protected by datalock.
+        Exceptions are caught and logged without crashing the thread.
+        """
+        rate = RateLimiter(self._thread_rate_hz)
+
+        while self.is_running:
+            try:
+                # Read input buffer (protected by lock)
+                with self.datalock:
+                    if not self._input_body_joints:
+                        # No input data yet, skip this iteration
+                        self.is_ready = False
+                        rate.sleep()
+                        continue
+
+                    # Copy input data for processing (release lock quickly)
+                    body_joints = self._input_body_joints.copy()
+
+                # Transform to GMR format (outside lock - computation intensive)
+                frame_data = self._transform_to_gmr_format(body_joints)
+
+                # Initialize GMR on first frame (outside lock)
+                if not self._initialized:
+                    self._initialize_gmr(frame_data)
+
+                # Run GMR retargeting (heavy computation, outside lock)
+                qpos = self._gmr.retarget(frame_data, offset_to_ground=self._use_ground_alignment)
+
+                # Update MuJoCo viewer if active (outside lock)
+                if self._viewer is not None:
+                    try:
+                        self._viewer.step(
+                            root_pos=qpos[:3],
+                            root_rot=qpos[3:7],
+                            dof_pos=qpos[7:],
+                            human_motion_data=self._gmr.scaled_human_data if self._show_human_skeleton else None,
+                            human_pos_offset=np.array([0.0, 0.0, 0.0]),
+                            show_human_body_name=False,
+                            rate_limit=True,
+                        )
+                    except Exception as e:
+                        print(f"[GMRThread] Warning: Viewer update failed: {e}")
+
+                # Write output buffer (protected by lock)
+                with self.datalock:
+                    self._output_qpos = qpos
+                    self.is_ready = True
+
+            except Exception as e:
+                print(f"[GMRThread] Error during retargeting: {e}")
+                import traceback
+                traceback.print_exc()
+                # Continue running despite errors
+
+            # Rate limit to target Hz
+            rate.sleep()
+
+        print("[GMRThread] Thread stopped")
 
     def _transform_to_gmr_format(self, body_joints: dict) -> dict:
         """Transform XRControllerFullBodyDevice data to GMR format.
@@ -292,6 +424,7 @@ class XRGMRRetargeter(RetargeterBase):
 
         Called on environment reset. Clears initialization flag to allow
         re-estimation of human height on next frame if height was auto-estimated.
+        In threaded mode, also clears the output buffer.
 
         Args:
             **kwargs: Optional reset parameters (unused by GMR, included for API compatibility)
@@ -306,8 +439,17 @@ class XRGMRRetargeter(RetargeterBase):
             # Height was manually specified, keep using it
             print("[XRGMRRetargeter] Reset - keeping manual height setting")
 
+        # In threaded mode, clear the output buffer to force new computation
+        if self._use_threading:
+            with self.datalock:
+                self._output_qpos = None
+                self.is_ready = False
+
     def retarget(self, data: dict[str, Any]) -> torch.Tensor | None:
         """Convert XR full-body tracking data to robot joint positions.
+
+        In threaded mode: Updates input buffer and reads latest output (non-blocking).
+        In non-threaded mode: Performs synchronous GMR retargeting (blocking).
 
         Args:
             data: Dictionary from XRControllerFullBodyDevice containing:
@@ -322,20 +464,72 @@ class XRGMRRetargeter(RetargeterBase):
                 - JOINT_POSITIONS_ONLY: [joint_angles(...)]
                 - None: Tracking data not available yet
         """
+        # Extract body joints
+        body_joints = data.get("body_joints", {})
+
+        # Validate data - body_joints is either empty {} or has all 24 joints
+        if not body_joints:
+            if self._last_valid_output is None:
+                # First call before tracking data available
+                print("[XRGMRRetargeter] Waiting for body tracking data...")
+            return self._last_valid_output
+
+        # Branch based on threading mode
+        if self._use_threading:
+            return self._retarget_threaded(body_joints)
+        else:
+            return self._retarget_synchronous(body_joints)
+
+    def _retarget_threaded(self, body_joints: dict) -> torch.Tensor | None:
+        """Non-blocking retargeting using background thread.
+
+        Args:
+            body_joints: Dictionary of joint data from XRControllerFullBodyDevice
+
+        Returns:
+            torch.Tensor | None: Latest retargeted output or cached output
+        """
+        # Start background thread on first call with valid data
+        if self._gmr_thread is None:
+            self._start_gmr_thread()
+
+        # Update input buffer (thread-safe write)
+        with self.datalock:
+            self._input_body_joints = body_joints
+
+            # Read latest output (non-blocking)
+            if self._output_qpos is not None and self.is_ready:
+                qpos = self._output_qpos.copy()
+            else:
+                # Thread hasn't produced output yet, return cached
+                return self._last_valid_output
+
+        # Format output based on configuration
+        if self._output_format == GMROutputFormat.FULL_QPOS:
+            output = qpos
+        elif self._output_format == GMROutputFormat.JOINT_POSITIONS_ONLY:
+            output = qpos[7:]  # Skip root_pos(3) + root_quat(4)
+        else:
+            raise ValueError(f"Invalid output_format: {self._output_format}")
+
+        # Convert to torch tensor
+        output_tensor = torch.tensor(output, dtype=torch.float32, device=self._sim_device)
+
+        # Cache this valid output
+        self._last_valid_output = output_tensor
+
+        return output_tensor
+
+    def _retarget_synchronous(self, body_joints: dict) -> torch.Tensor | None:
+        """Synchronous (blocking) retargeting without threading.
+
+        Args:
+            body_joints: Dictionary of joint data from XRControllerFullBodyDevice
+
+        Returns:
+            torch.Tensor | None: Retargeted output or None on error
+        """
         try:
-            # Extract body joints
-            body_joints = data.get("body_joints", {})
-
-            # Validate data - body_joints is either empty {} or has all 24 joints
-            if not body_joints:
-                if self._last_valid_output is None:
-                    # First call before tracking data available
-                    print("[XRGMRRetargeter] Waiting for body tracking data...")
-                    return None
-                else:
-                    # Return cached last valid output
-                    return self._last_valid_output
-
             # Transform to GMR format
             frame_data = self._transform_to_gmr_format(body_joints)
 
@@ -343,13 +537,12 @@ class XRGMRRetargeter(RetargeterBase):
             if not self._initialized:
                 self._initialize_gmr(frame_data)
 
-            # Run GMR retargeting
+            # Run GMR retargeting (blocking)
             qpos = self._gmr.retarget(frame_data, offset_to_ground=self._use_ground_alignment)
 
             # Update MuJoCo viewer if active
             if self._viewer is not None:
                 try:
-                    # Sync viewer with retargeted robot state
                     self._viewer.step(
                         root_pos=qpos[:3],
                         root_rot=qpos[3:7],
@@ -357,27 +550,23 @@ class XRGMRRetargeter(RetargeterBase):
                         human_motion_data=self._gmr.scaled_human_data if self._show_human_skeleton else None,
                         human_pos_offset=np.array([0.0, 0.0, 0.0]),
                         show_human_body_name=False,
-                        rate_limit=True,  # Use viewer's internal rate limiter
+                        rate_limit=True,
                     )
                 except Exception as e:
                     print(f"[XRGMRRetargeter] Warning: Viewer update failed: {e}")
 
             # Format output based on configuration
             if self._output_format == GMROutputFormat.FULL_QPOS:
-                # Return complete qpos: [root_pos(3), root_quat(4), joint_angles(...)]
                 output = qpos
-
             elif self._output_format == GMROutputFormat.JOINT_POSITIONS_ONLY:
-                # Return only joint angles (exclude root pose)
                 output = qpos[7:]  # Skip root_pos(3) + root_quat(4)
-
             else:
                 raise ValueError(f"Invalid output_format: {self._output_format}")
 
             # Convert to torch tensor
             output_tensor = torch.tensor(output, dtype=torch.float32, device=self._sim_device)
 
-            # Cache this valid output for future use
+            # Cache this valid output
             self._last_valid_output = output_tensor
 
             return output_tensor
