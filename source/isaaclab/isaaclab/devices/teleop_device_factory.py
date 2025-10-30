@@ -38,12 +38,16 @@ with contextlib.suppress(ModuleNotFoundError):
     from isaaclab.devices.xrobotoolkit import (
         XRControllerDevice,
         XRControllerDeviceCfg,
+        XRControllerFullBodyDevice,
+        XRControllerFullBodyDeviceCfg,
         XRGripperRetargeter,
         XRGripperRetargeterCfg,
         XRSe3AbsRetargeter,
         XRSe3AbsRetargeterCfg,
         XRSe3RelRetargeter,
         XRSe3RelRetargeterCfg,
+        XRT1GMRRetargeter,
+        XRT1GMRRetargeterCfg,
         XRT1MinkIKRetargeter,
         XRT1MinkIKRetargeterCfg,
     )
@@ -67,6 +71,7 @@ DEVICE_MAP: dict[type[DeviceCfg], type[DeviceBase]] = {
 # Add XRoboToolkit devices if available
 with contextlib.suppress(NameError):
     DEVICE_MAP[XRControllerDeviceCfg] = XRControllerDevice
+    DEVICE_MAP[XRControllerFullBodyDeviceCfg] = XRControllerFullBodyDevice
 
 
 # Map configuration types to their corresponding retargeter classes
@@ -85,6 +90,7 @@ with contextlib.suppress(NameError):
     RETARGETER_MAP[XRSe3RelRetargeterCfg] = XRSe3RelRetargeter
     RETARGETER_MAP[XRSe3AbsRetargeterCfg] = XRSe3AbsRetargeter
     RETARGETER_MAP[XRGripperRetargeterCfg] = XRGripperRetargeter
+    RETARGETER_MAP[XRT1GMRRetargeterCfg] = XRT1GMRRetargeter
     RETARGETER_MAP[XRT1MinkIKRetargeterCfg] = XRT1MinkIKRetargeter
 
 

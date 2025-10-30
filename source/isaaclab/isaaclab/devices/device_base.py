@@ -114,6 +114,14 @@ class DeviceBase(ABC):
         if not self._retargeters:
             return raw_data
 
-        # With multiple retargeters, return a tuple of outputs
-        # Concatenate retargeted outputs into a single tensor
-        return torch.cat([retargeter.retarget(raw_data) for retargeter in self._retargeters], dim=-1)
+        # Process all retargeters
+        retargeted_outputs = []
+        for retargeter in self._retargeters:
+            output = retargeter.retarget(raw_data)
+            # If any retargeter returns None (data not ready), return None for the whole device
+            if output is None:
+                return None
+            retargeted_outputs.append(output)
+
+        # Concatenate all valid outputs into a single tensor
+        return torch.cat(retargeted_outputs, dim=-1)

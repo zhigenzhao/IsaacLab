@@ -30,7 +30,7 @@ from isaaclab.utils.noise import GaussianNoiseCfg as Gnoise
 from ..t1_common.joint_names import T1_UPPER_BODY_JOINTS, T1_UPPER_BODY_WITH_GRIPPERS
 from ..t1_common.physics_constants import MANIPULATION_OBJECT_PROPERTIES, MANIPULATION_PHYSX_SETTINGS
 from ..t1_common.t1_camera_cfg import get_default_t1_head_cameras
-from ..t1_common.xr_controller_cfg import create_t1_xr_controller_cfg
+from ..t1_common.xr_controller_cfg import create_t1_xr_controller_cfg, create_t1_xr_controller_full_body_cfg
 from . import t1_stack_mdp
 
 ##
@@ -439,6 +439,7 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
         self.teleop_devices = DevicesCfg(
             devices={
                 "xr_controller": create_t1_xr_controller_cfg(sim_device=self.sim.device),
+                "xr_controller_full_body": create_t1_xr_controller_full_body_cfg(sim_device=self.sim.device),
                 "keyboard": Se3KeyboardCfg(
                     pos_sensitivity=0.05,
                     rot_sensitivity=0.05,

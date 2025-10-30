@@ -372,8 +372,9 @@ def handle_reset(
         if hasattr(teleop_interface, '_retargeters'):
             for retargeter in teleop_interface._retargeters:
                 if hasattr(retargeter, 'reset'):
-                    retargeter.reset(measured_joint_pos.cpu().numpy())
-                    print(f"  Synced {type(retargeter).__name__} state after reset")
+                    # Pass joint positions as optional kwarg - retargeters use it if needed
+                    retargeter.reset(joint_positions=measured_joint_pos.cpu().numpy())
+                    print(f"  Reset {type(retargeter).__name__} with state sync")
 
     return success_step_count
 
@@ -496,8 +497,9 @@ def run_simulation_loop(
         if hasattr(teleop_interface, '_retargeters'):
             for retargeter in teleop_interface._retargeters:
                 if hasattr(retargeter, 'reset'):
-                    retargeter.reset(measured_joint_pos.cpu().numpy())
-                    omni.log.info(f"Reset {type(retargeter).__name__} with measured joint positions")
+                    # Pass joint positions as optional kwarg - retargeters use it if needed
+                    retargeter.reset(joint_positions=measured_joint_pos.cpu().numpy())
+                    omni.log.info(f"Reset {type(retargeter).__name__} with state sync")
 
     label_text = f"Recorded {current_recorded_demo_count} successful demonstrations."
     instruction_display = setup_ui(label_text, env)
@@ -514,6 +516,13 @@ def run_simulation_loop(
 
             # Get keyboard command
             action = teleop_interface.advance()
+
+            # Check if action is valid (None means tracking data not ready yet)
+            if action is None:
+                # No valid tracking data yet - just render without stepping
+                env.sim.render()
+                continue
+
             # Expand to batch dimension
             actions = action.repeat(env.num_envs, 1)
 

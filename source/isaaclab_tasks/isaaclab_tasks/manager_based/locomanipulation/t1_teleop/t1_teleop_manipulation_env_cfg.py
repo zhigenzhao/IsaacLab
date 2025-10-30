@@ -30,7 +30,7 @@ import isaaclab.envs.mdp as mdp
 from .t1_teleop_commands_cfg import DummyCommandCfg
 from .t1_teleop_recorders import PostStepCommandRecorderCfg
 from ..t1_common.joint_names import T1_UPPER_BODY_JOINTS, T1_UPPER_BODY_WITH_GRIPPERS
-from ..t1_common.xr_controller_cfg import create_t1_xr_controller_cfg
+from ..t1_common.xr_controller_cfg import create_t1_xr_controller_cfg, create_t1_xr_controller_full_body_cfg
 from ..t1_common.physics_constants import MANIPULATION_OBJECT_PROPERTIES, MANIPULATION_PHYSX_SETTINGS
 from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManagerCfg
 from isaaclab.managers import DatasetExportMode
@@ -282,6 +282,7 @@ class T1TeleopManipulationEnvCfg(ManagerBasedRLEnvCfg):
         self.teleop_devices = DevicesCfg(
             devices={
                 "xr_controller": create_t1_xr_controller_cfg(sim_device=self.sim.device),
+                "xr_controller_full_body": create_t1_xr_controller_full_body_cfg(sim_device=self.sim.device),
                 "keyboard": Se3KeyboardCfg(
                     pos_sensitivity=0.05,
                     rot_sensitivity=0.05,
