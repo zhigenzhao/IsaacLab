@@ -20,7 +20,7 @@ def create_t1_xr_controller_cfg(
     collision_detection_distance: float = 0.10,
     velocity_limit_factor: float = 0.7,
     reference_frame: str = "trunk",
-    enable_head_tracking: bool = True,
+    enable_head_tracking: bool = False,
 ) -> XRControllerDeviceCfg:
     """Create standard T1 XR controller configuration.
 

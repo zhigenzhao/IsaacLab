@@ -155,6 +155,7 @@ class XRT1GMRRetargeter(RetargeterBase):
 
             # Create default head joints (no head tracking in GMR T1 model)
             head_joints = torch.zeros(2, dtype=torch.float32, device=self._sim_device)
+            head_joints[1] = 1.0472
 
             # Combine: [head(2) + arms(14)] = 16 upper body joints
             # This matches XRT1MinkIKRetargeter output format

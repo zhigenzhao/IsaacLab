@@ -74,14 +74,14 @@ class T1StackSceneCfg(InteractiveSceneCfg):
 # Reset state for T1
 ##
 PREP_STATE = ArticulationCfg.InitialStateCfg(
-    pos=(0.05, 0.0, 1.2),
+    pos=(0.05, 0.0, 1.175),
     rot=(1, 0.0, 0.0, 0),
     joint_pos={
         "AAHead_yaw": 0.0,
         "Head_pitch": 0.0,
         ".*_Shoulder_Pitch": 0.0706,
-        "Left_Shoulder_Roll": -1.55,
-        "Right_Shoulder_Roll": 1.55,
+        "Left_Shoulder_Roll": -1.35,
+        "Right_Shoulder_Roll": 1.35,
         ".*_Elbow_Pitch": 0.0,
         "Left_Elbow_Yaw": -1.57,
         "Right_Elbow_Yaw": 1.57,
@@ -221,10 +221,6 @@ class ObservationsCfg:
                     self.head_rgb_cam = ObsTerm(
                         func=mdp.image,
                         params={"sensor_cfg": SceneEntityCfg("head_rgb_cam"), "data_type": "rgb", "normalize": False}
-                    )
-                    self.head_depth_cam = ObsTerm(
-                        func=mdp.image,
-                        params={"sensor_cfg": SceneEntityCfg("head_depth_cam"), "data_type": "distance_to_image_plane", "normalize": False}
                     )
             except Exception:
                 # If carb settings are not available, cameras are not enabled
@@ -382,8 +378,8 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
 
         # Enable DLSS rendering
         self.sim.render = sim_utils.RenderCfg(
-            enable_dlssg=False,
-            dlss_mode=0,
+            enable_dlssg=True,
+            dlss_mode=2,
             rendering_mode="balanced"
         )
 
@@ -400,9 +396,8 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
 
         # Add head cameras only if enabled (RealSense D455) with 424x240 resolution
         if self._cameras_enabled:
-            cameras = get_default_t1_head_cameras(resolution=(240, 424), include_depth=True, include_stereo=False)
+            cameras = get_default_t1_head_cameras(resolution=(240, 424), include_depth=False, include_stereo=False)
             self.scene.head_rgb_cam = cameras["head_rgb_cam"]
-            self.scene.head_depth_cam = cameras["head_depth_cam"]
 
         # Add cubes to scene (on table surface at z=1.0703)
         self.scene.cube_1 = RigidObjectCfg(
@@ -451,7 +446,7 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
         # Camera rendering settings for observation recording (only if cameras are enabled)
         if self._cameras_enabled:
             self.rerender_on_reset = True
-            self.image_obs_list = ["head_rgb_cam", "head_depth_cam"]
+            self.image_obs_list = ["head_rgb_cam"]
 
     def _check_cameras_enabled(self) -> bool:
         """Check if cameras are enabled via carb settings.

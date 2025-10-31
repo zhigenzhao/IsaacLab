@@ -132,17 +132,23 @@ class XRT1MinkIKRetargeterCfg(RetargeterCfg):
     """Reference frame for relative control. Controller movements are interpreted relative to this frame.
     Common values: 'trunk' (robot's torso), 'world' (global frame)."""
 
-    enable_head_tracking: bool = True
-    """If True, track headset orientation with IK orientation task."""
+    enable_head_tracking: bool = False
+    """If True, track headset orientation with direct joint control. If False, use fixed head angles."""
+
+    fixed_head_yaw: float = 0.0
+    """Fixed yaw angle for head (radians) when head tracking is disabled."""
+
+    fixed_head_pitch: float = 1.0472
+    """Fixed pitch angle for head (radians) when head tracking is disabled. Default: 1.0472 rad (60 deg)."""
 
     head_task_orientation_cost: float = 3.0
-    """Cost/weight for head orientation tracking in IK solver."""
+    """Cost/weight for head orientation tracking in IK solver (only used if enable_head_tracking=True)."""
 
     head_task_position_cost: float = 0.0
-    """Cost for head position (should be 0.0 - orientation only)."""
+    """Cost for head position (should be 0.0 - orientation only) (only used if enable_head_tracking=True)."""
 
     head_task_lm_damping: float = 0.03
-    """Levenberg-Marquardt damping for head IK task."""
+    """Levenberg-Marquardt damping for head IK task (only used if enable_head_tracking=True)."""
 
     motion_tracker_config: dict[str, dict[str, str]] | None = None
     """Optional motion tracker configuration for additional IK constraints.
@@ -208,6 +214,8 @@ class XRT1MinkIKRetargeter(RetargeterBase):
 
         # Head tracking configuration
         self._enable_head_tracking = cfg.enable_head_tracking
+        self._fixed_head_yaw = cfg.fixed_head_yaw
+        self._fixed_head_pitch = cfg.fixed_head_pitch
         self._head_task_orientation_cost = cfg.head_task_orientation_cost
         self._head_task_position_cost = cfg.head_task_position_cost
         self._head_task_lm_damping = cfg.head_task_lm_damping
@@ -314,8 +322,9 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         self.htrack = False  # Head tracking activation state
 
         # Head joint angles (directly controlled, not via IK)
-        self.desired_head_yaw = 0.0
-        self.desired_head_pitch = 0.0
+        # Initialize with fixed values (will be updated if head tracking is enabled)
+        self.desired_head_yaw = self._fixed_head_yaw
+        self.desired_head_pitch = self._fixed_head_pitch
 
         # Measured joint positions from simulation (for state sync)
         self.measured_joint_positions = None
@@ -1039,15 +1048,19 @@ class XRT1MinkIKRetargeter(RetargeterBase):
                         self.htrack = True
 
                 except ValueError as e:
-                    # Invalid headset data - keep head at current angles
+                    # Invalid headset data - keep head at fixed angles
                     if self.htrack:
                         print(f"Head tracking deactivated: {e}")
                         self.htrack = False
+                    # Reset to fixed angles
+                    self.set_head_joint_angles(self._fixed_head_yaw, self._fixed_head_pitch)
         else:
-            # Head tracking disabled
+            # Head tracking disabled - keep head at fixed angles
             if self.htrack:
-                print("Head tracking disabled")
+                print("Head tracking disabled - using fixed angles")
                 self.htrack = False
+            # Ensure head stays at fixed angles
+            self.set_head_joint_angles(self._fixed_head_yaw, self._fixed_head_pitch)
 
         # Get IK solution (head joints are directly set, not from IK)
         qpos_upper = self.get_qpos_upper()
