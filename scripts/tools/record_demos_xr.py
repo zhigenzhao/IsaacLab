@@ -44,7 +44,7 @@ parser.add_argument("--teleop_device", type=str, default="xr_controller", help="
 parser.add_argument(
     "--dataset_file", type=str, default="./datasets/dataset.hdf5", help="File path to export recorded demos."
 )
-parser.add_argument("--step_hz", type=int, default=30, help="Environment stepping rate in Hz.")
+parser.add_argument("--step_hz", type=int, default=50, help="Environment stepping rate in Hz.")
 parser.add_argument(
     "--num_demos", type=int, default=0, help="Number of demonstrations to record. Set to 0 for infinite."
 )
@@ -599,8 +599,8 @@ def main() -> None:
     Raises:
         Exception: Propagates exceptions from any of the called functions
     """
-    # XR controller mode: rate limiting is achieved via OpenXR, so disable rate_limiter
-    rate_limiter = None
+    # XR controller mode: enable rate limiting using step_hz argument
+    rate_limiter = RateLimiter(hz=args_cli.step_hz)
 
     # Set up output directories
     output_dir, output_file_name = setup_output_directories()
