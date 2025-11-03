@@ -14,7 +14,7 @@ import torch
 from torch import Tensor
 
 from lerobot.configs.policies import PreTrainedConfig
-from lerobot.policies.factory import get_policy_class
+from lerobot.policies.factory import get_policy_class, make_pre_post_processors
 from scripts.tools.lerobot_action_chunk_broker import ActionChunkBroker
 
 
@@ -128,6 +128,28 @@ class LeRobotPolicyProvider:
             self.policy.eval()
             print(f"✓ Loaded {config.type} policy successfully")
 
+            # Load the preprocessor and postprocessor pipelines
+            # These handle normalization/unnormalization automatically
+            self.preprocessor, self.postprocessor = make_pre_post_processors(
+                policy_cfg=config,
+                pretrained_path=self.model_path,
+                preprocessor_overrides={"device_processor": {"device": str(self.device)}},
+                postprocessor_overrides={"device_processor": {"device": str(self.device)}},
+            )
+            print(f"✓ Loaded preprocessor and postprocessor pipelines")
+
+            # Monkey-patch policy.unnormalize_outputs to use the postprocessor
+            # DiffusionPolicy internally calls self.unnormalize_outputs() during select_action()
+            # We redirect this to use our postprocessor pipeline
+            def unnormalize_outputs(output_dict):
+                """Unnormalize outputs using the postprocessor pipeline."""
+                if "action" in output_dict:
+                    unnormalized = self.postprocessor(output_dict["action"])
+                    return {"action": unnormalized}
+                return output_dict
+
+            self.policy.unnormalize_outputs = unnormalize_outputs
+
         except Exception as e:
             raise RuntimeError(
                 f"Failed to load policy from {self.model_path}. "
@@ -166,7 +188,8 @@ class LeRobotPolicyProvider:
         Returns:
             Preprocessed observation ready for policy inference with LeRobot format
         """
-        processed_obs = {}
+        # First, convert Isaac Lab format to LeRobot raw format
+        raw_obs = {}
 
         # Handle RGB image
         if self.image_key in obs:
@@ -185,12 +208,11 @@ class LeRobotPolicyProvider:
             if rgb_image.dtype == torch.uint8:
                 rgb_image = rgb_image.float() / 255.0
 
-            # Convert from (H, W, C) to (1, C, H, W) - channels first with batch
+            # Convert from (H, W, C) to (C, H, W) - channels first WITHOUT batch yet
             if len(rgb_image.shape) == 3:
                 rgb_image = rgb_image.permute(2, 0, 1)  # (H, W, C) -> (C, H, W)
-                rgb_image = rgb_image.unsqueeze(0)  # (C, H, W) -> (1, C, H, W)
 
-            processed_obs["observation.images.head_rgb"] = rgb_image.to(self.device)
+            raw_obs["observation.images.head_rgb"] = rgb_image
         else:
             raise ValueError(
                 f"Expected image key '{self.image_key}' not found in observations. "
@@ -213,17 +235,15 @@ class LeRobotPolicyProvider:
             # Extract state DOFs for policy (first state_dof elements)
             state = state[: self.state_dof]
 
-            # Add batch dimension: (state_dim,) -> (1, state_dim)
-            if len(state.shape) == 1:
-                state = state.unsqueeze(0)
-
-            processed_obs["observation.state"] = state.to(self.device)
+            raw_obs["observation.state"] = state
         else:
             raise ValueError(
                 f"Expected state key '{self.state_key}' not found in observations. "
                 f"Available keys: {list(obs.keys())}"
             )
 
+        # Apply preprocessing pipeline (adds batch dim, normalizes, etc.)
+        processed_obs = self.preprocessor(raw_obs)
         return processed_obs
 
     def get_action(self, obs: dict[str, Tensor]) -> Tensor:
@@ -247,6 +267,7 @@ class LeRobotPolicyProvider:
         processed_obs = self.preprocess_observation(obs)
 
         # Generate action using policy (potentially through action broker)
+        # Note: Unnormalization happens internally via policy.unnormalize_outputs()
         with torch.no_grad():
             if self.use_action_chunking:
                 action = self.action_broker.infer(processed_obs)

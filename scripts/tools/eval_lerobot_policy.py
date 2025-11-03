@@ -230,15 +230,16 @@ class PolicyEvaluator:
             from isaaclab.sensors import CameraCfg
             import isaaclab.sim as sim_utils
 
-            # Add head cameras
-            env_cfg.observations.policy.head_rgb_cam = ObsTerm(
-                func=mdp.image,
-                params={"sensor_cfg": SceneEntityCfg("head_rgb_cam"), "data_type": "rgb", "normalize": False}
-            )
-            env_cfg.observations.policy.head_depth_cam = ObsTerm(
-                func=mdp.image,
-                params={"sensor_cfg": SceneEntityCfg("head_depth_cam"), "data_type": "distance_to_image_plane", "normalize": False}
-            )
+            # Enable DLSS antialiasing (matches record_demos_xr.py settings)
+            env_cfg.sim.render.antialiasing_mode = "DLSS"
+
+            # Add head RGB camera observation (the camera itself is added by the env config)
+            # Only add if not already present
+            if not hasattr(env_cfg.observations.policy, "head_rgb_cam"):
+                env_cfg.observations.policy.head_rgb_cam = ObsTerm(
+                    func=mdp.image,
+                    params={"sensor_cfg": SceneEntityCfg("head_rgb_cam"), "data_type": "rgb", "normalize": False}
+                )
 
             # Add scene camera (third-person view)
             # Camera positioned at (2.5, 2.5, 2.5) looking at workspace around (0, 0, 1.0)
@@ -265,7 +266,7 @@ class PolicyEvaluator:
                 func=mdp.image,
                 params={"sensor_cfg": SceneEntityCfg("scene_cam"), "data_type": "rgb", "normalize": False}
             )
-            print("✓ Camera observations added (head + scene)")
+            print("✓ Camera observations added (head RGB + scene)")
 
         # Disable time-out termination for evaluation
         if hasattr(env_cfg, "terminations") and hasattr(env_cfg.terminations, "time_out"):
