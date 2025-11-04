@@ -29,7 +29,7 @@ from isaaclab.utils.noise import GaussianNoiseCfg as Gnoise
 
 from ..t1_common.joint_names import T1_UPPER_BODY_JOINTS, T1_UPPER_BODY_WITH_GRIPPERS
 from ..t1_common.physics_constants import MANIPULATION_OBJECT_PROPERTIES, MANIPULATION_PHYSX_SETTINGS
-from ..t1_common.t1_camera_cfg import get_default_t1_head_cameras
+from ..t1_common.t1_camera_cfg import get_default_t1_head_cameras, get_default_t1_wrist_cameras
 from ..t1_common.xr_controller_cfg import create_t1_xr_controller_cfg, create_t1_xr_controller_full_body_cfg
 from . import t1_stack_mdp
 
@@ -222,6 +222,14 @@ class ObservationsCfg:
                         func=mdp.image,
                         params={"sensor_cfg": SceneEntityCfg("head_rgb_cam"), "data_type": "rgb", "normalize": False}
                     )
+                    self.left_wrist_cam = ObsTerm(
+                        func=mdp.image,
+                        params={"sensor_cfg": SceneEntityCfg("left_wrist_cam"), "data_type": "rgb", "normalize": False}
+                    )
+                    self.right_wrist_cam = ObsTerm(
+                        func=mdp.image,
+                        params={"sensor_cfg": SceneEntityCfg("right_wrist_cam"), "data_type": "rgb", "normalize": False}
+                    )
             except Exception:
                 # If carb settings are not available, cameras are not enabled
                 pass
@@ -399,6 +407,11 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
             cameras = get_default_t1_head_cameras(resolution=(240, 424), include_depth=False, include_stereo=False)
             self.scene.head_rgb_cam = cameras["head_rgb_cam"]
 
+            # Add wrist cameras (RealSense D405) with 424x240 resolution
+            wrist_cameras = get_default_t1_wrist_cameras(resolution=(240, 424))
+            self.scene.left_wrist_cam = wrist_cameras["left_wrist_cam"]
+            self.scene.right_wrist_cam = wrist_cameras["right_wrist_cam"]
+
         # Add cubes to scene (on table surface at z=1.0703)
         self.scene.cube_1 = RigidObjectCfg(
             prim_path="{ENV_REGEX_NS}/Cube_1",
@@ -446,7 +459,7 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
         # Camera rendering settings for observation recording (only if cameras are enabled)
         if self._cameras_enabled:
             self.rerender_on_reset = True
-            self.image_obs_list = ["head_rgb_cam"]
+            self.image_obs_list = ["head_rgb_cam", "left_wrist_cam", "right_wrist_cam"]
 
     def _check_cameras_enabled(self) -> bool:
         """Check if cameras are enabled via carb settings.

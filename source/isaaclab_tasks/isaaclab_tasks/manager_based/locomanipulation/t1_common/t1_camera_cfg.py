@@ -212,6 +212,51 @@ class T1HeadCameraCfg:
             ),
         )
 
+    @staticmethod
+    def create_wrist_camera(
+        side: str,
+        height: int = 480,
+        width: int = 640,
+        update_period: float = 0.0,
+        data_types: list[str] | None = None,
+    ) -> CameraCfg:
+        """Create wrist D405 camera as child of USD camera prim to inherit its transform.
+
+        The RealSense D405 is mounted on the wrist and provides RGB visual observations
+        from the hand's perspective.
+
+        Args:
+            side: Which wrist camera to create ("left" or "right").
+            height: Image height in pixels. Default 480 (VGA resolution).
+            width: Image width in pixels. Default 640 (VGA resolution).
+            update_period: Camera update period in seconds. 0.0 = every frame.
+            data_types: List of data types to capture. Default ["rgb"].
+
+        Returns:
+            CameraCfg: Camera configuration that inherits USD camera transform.
+        """
+        if data_types is None:
+            data_types = ["rgb"]
+
+        prim_path = f"{{ENV_REGEX_NS}}/Robot/{side}_base_link/sensor_d405/camera_link/camera_color_frame/camera_color_optical_frame/{side}_wrist_cam"
+
+        return CameraCfg(
+            prim_path=prim_path,
+            update_period=update_period,
+            height=height,
+            width=width,
+            data_types=data_types,
+            spawn=sim_utils.PinholeCameraCfg(
+                focal_length=1.88,
+                focus_distance=400.0,
+                horizontal_aperture=3.527,
+                clipping_range=(0.01, 10.0),
+            ),
+            offset=CameraCfg.OffsetCfg(
+                convention="ros",
+            ),
+        )
+
 
 ##
 # Observation Term Configurations
@@ -312,5 +357,46 @@ def get_default_t1_head_cameras(
             width=resolution[1],
             data_types=["rgb"],
         )
+
+    return cameras
+
+
+def get_default_t1_wrist_cameras(
+    resolution: tuple[int, int] = (84, 84),
+) -> dict[str, CameraCfg]:
+    """Get default wrist camera configurations for T1.
+
+    This is a convenience function to quickly set up wrist-mounted RealSense D405
+    cameras on both the left and right wrists of the T1 robot.
+
+    Args:
+        resolution: Camera resolution as (height, width). Default (84, 84) for
+            compatibility with imitation learning policies.
+
+    Returns:
+        dict[str, CameraCfg]: Dictionary mapping camera names to configurations.
+
+    Example:
+        >>> cameras = get_default_t1_wrist_cameras(resolution=(240, 424))
+        >>> scene_cfg.left_wrist_cam = cameras["left_wrist_cam"]
+        >>> scene_cfg.right_wrist_cam = cameras["right_wrist_cam"]
+    """
+    cameras = {}
+
+    # Left wrist camera
+    cameras["left_wrist_cam"] = T1HeadCameraCfg.create_wrist_camera(
+        side="left",
+        height=resolution[0],
+        width=resolution[1],
+        data_types=["rgb"],
+    )
+
+    # Right wrist camera
+    cameras["right_wrist_cam"] = T1HeadCameraCfg.create_wrist_camera(
+        side="right",
+        height=resolution[0],
+        width=resolution[1],
+        data_types=["rgb"],
+    )
 
     return cameras

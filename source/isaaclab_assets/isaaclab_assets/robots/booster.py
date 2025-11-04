@@ -254,7 +254,7 @@ T1_REACH_CFG = ArticulationCfg(
 
 T1_GRASP_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path="source/isaaclab_assets/isaaclab_assets/robots/USD/t1/t1_29dof_1014_upper.usd",
+        usd_path="source/isaaclab_assets/isaaclab_assets/robots/USD/t1/t1_29dof_1014_upper_wrist_cam.usd",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
