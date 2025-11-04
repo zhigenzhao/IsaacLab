@@ -7,7 +7,7 @@
 # Example 1: Basic evaluation (10 episodes)
 echo "Example 1: Basic evaluation"
 python scripts/tools/eval_lerobot_policy.py \
-    --task Isaac-Stack-Cube-T1-v0 \
+    --task Isaac-T1-Stack-Cube-v0 \
     --policy_path kelvinzhaozg/t1_stack_cube_policy \
     --num_episodes 10 \
     --policy_device cuda
@@ -15,7 +15,7 @@ python scripts/tools/eval_lerobot_policy.py \
 # Example 2: With action chunking (recommended for faster inference)
 echo "Example 2: With action chunking"
 python scripts/tools/eval_lerobot_policy.py \
-    --task Isaac-Stack-Cube-T1-v0 \
+    --task Isaac-T1-Stack-Cube-v0 \
     --policy_path kelvinzhaozg/t1_stack_cube_policy \
     --num_episodes 10 \
     --use_action_chunking \
@@ -25,7 +25,7 @@ python scripts/tools/eval_lerobot_policy.py \
 # Example 3: With video recording (cameras automatically enabled)
 echo "Example 3: With video recording"
 python scripts/tools/eval_lerobot_policy.py \
-    --task Isaac-Stack-Cube-T1-v0 \
+    --task Isaac-T1-Stack-Cube-v0 \
     --policy_path kelvinzhaozg/t1_stack_cube_policy \
     --num_episodes 5 \
     --use_action_chunking \
@@ -37,7 +37,7 @@ python scripts/tools/eval_lerobot_policy.py \
 # Example 3b: Headless with video recording (cameras still work!)
 echo "Example 3b: Headless with video recording"
 python scripts/tools/eval_lerobot_policy.py \
-    --task Isaac-Stack-Cube-T1-v0 \
+    --task Isaac-T1-Stack-Cube-v0 \
     --policy_path kelvinzhaozg/t1_stack_cube_policy \
     --num_episodes 5 \
     --use_action_chunking \
@@ -49,7 +49,7 @@ python scripts/tools/eval_lerobot_policy.py \
 # Example 4: Headless evaluation with trajectory saving
 echo "Example 4: Headless with trajectories"
 python scripts/tools/eval_lerobot_policy.py \
-    --task Isaac-Stack-Cube-T1-v0 \
+    --task Isaac-T1-Stack-Cube-v0 \
     --policy_path kelvinzhaozg/t1_stack_cube_policy \
     --num_episodes 20 \
     --use_action_chunking \
@@ -63,7 +63,7 @@ python scripts/tools/eval_lerobot_policy.py \
 # Example 5: Local policy evaluation
 echo "Example 5: Local policy"
 python scripts/tools/eval_lerobot_policy.py \
-    --task Isaac-Stack-Cube-T1-v0 \
+    --task Isaac-T1-Stack-Cube-v0 \
     --policy_path /path/to/local/policy \
     --num_episodes 10 \
     --use_action_chunking \
@@ -72,7 +72,7 @@ python scripts/tools/eval_lerobot_policy.py \
 # Example 6: CPU evaluation (no CUDA)
 echo "Example 6: CPU evaluation"
 python scripts/tools/eval_lerobot_policy.py \
-    --task Isaac-Stack-Cube-T1-v0 \
+    --task Isaac-T1-Stack-Cube-v0 \
     --policy_path kelvinzhaozg/t1_stack_cube_policy \
     --num_episodes 5 \
     --use_action_chunking \
@@ -81,7 +81,7 @@ python scripts/tools/eval_lerobot_policy.py \
 # Example 7: Quick test (1 episode, short)
 echo "Example 7: Quick test"
 python scripts/tools/eval_lerobot_policy.py \
-    --task Isaac-Stack-Cube-T1-v0 \
+    --task Isaac-T1-Stack-Cube-v0 \
     --policy_path kelvinzhaozg/t1_stack_cube_policy \
     --num_episodes 1 \
     --max_episode_length 100 \
@@ -91,7 +91,7 @@ python scripts/tools/eval_lerobot_policy.py \
 # Example 8: Long evaluation with full logging
 echo "Example 8: Long evaluation"
 python scripts/tools/eval_lerobot_policy.py \
-    --task Isaac-Stack-Cube-T1-v0 \
+    --task Isaac-T1-Stack-Cube-v0 \
     --policy_path kelvinzhaozg/t1_stack_cube_policy \
     --num_episodes 50 \
     --max_episode_length 1000 \
@@ -102,34 +102,3 @@ python scripts/tools/eval_lerobot_policy.py \
     --seed 42 \
     --headless \
     --policy_device cuda
-
-# === DIFFERENT POLICY TYPES ===
-
-# Example 9: Diffusion policy
-echo "Example 9: Diffusion policy"
-python scripts/tools/eval_lerobot_policy.py \
-    --task Isaac-Stack-Cube-T1-v0 \
-    --policy_path username/diffusion_policy \
-    --num_episodes 10 \
-    --use_action_chunking \
-    --policy_device cuda
-
-# Example 10: ACT policy
-echo "Example 10: ACT policy"
-python scripts/tools/eval_lerobot_policy.py \
-    --task Isaac-Stack-Cube-T1-v0 \
-    --policy_path username/act_policy \
-    --num_episodes 10 \
-    --use_action_chunking \
-    --policy_device cuda
-
-# Example 11: Flow Matching policy
-echo "Example 11: Flow Matching policy"
-python scripts/tools/eval_lerobot_policy.py \
-    --task Isaac-Stack-Cube-T1-v0 \
-    --policy_path username/flow_matching_policy \
-    --num_episodes 10 \
-    --use_action_chunking \
-    --policy_device cuda
-
-echo "All examples completed!"

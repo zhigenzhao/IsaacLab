@@ -138,18 +138,6 @@ class LeRobotPolicyProvider:
             )
             print(f"✓ Loaded preprocessor and postprocessor pipelines")
 
-            # Monkey-patch policy.unnormalize_outputs to use the postprocessor
-            # DiffusionPolicy internally calls self.unnormalize_outputs() during select_action()
-            # We redirect this to use our postprocessor pipeline
-            def unnormalize_outputs(output_dict):
-                """Unnormalize outputs using the postprocessor pipeline."""
-                if "action" in output_dict:
-                    unnormalized = self.postprocessor(output_dict["action"])
-                    return {"action": unnormalized}
-                return output_dict
-
-            self.policy.unnormalize_outputs = unnormalize_outputs
-
         except Exception as e:
             raise RuntimeError(
                 f"Failed to load policy from {self.model_path}. "
@@ -267,12 +255,15 @@ class LeRobotPolicyProvider:
         processed_obs = self.preprocess_observation(obs)
 
         # Generate action using policy (potentially through action broker)
-        # Note: Unnormalization happens internally via policy.unnormalize_outputs()
+        # Note: Policy returns NORMALIZED actions, postprocessor handles unnormalization
         with torch.no_grad():
             if self.use_action_chunking:
                 action = self.action_broker.infer(processed_obs)
             else:
                 action = self.policy.select_action(processed_obs)
+
+        # Unnormalize actions using postprocessor (matching lerobot_eval.py pattern)
+        action = self.postprocessor(action)
 
         # Ensure it's a tensor
         if not isinstance(action, Tensor):
