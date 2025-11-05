@@ -37,17 +37,28 @@ class LeRobotPolicyProvider:
         device: Device for inference ("cuda", "cpu", "mps")
         use_action_chunking: Whether to use action chunking to reduce inference frequency
         execution_horizon: Number of steps before triggering new inference (if action chunking enabled)
-        image_key: Name of the image observation in Isaac Lab (default: "head_rgb_cam")
+        image_keys: Single image key or list of image keys from Isaac Lab observations
+                   (default: ["head_rgb_cam"]). Maps to LeRobot observation keys like:
+                   "head_rgb_cam" -> "observation.images.head_rgb"
+                   "left_wrist_cam" -> "observation.images.left_wrist"
+                   "right_wrist_cam" -> "observation.images.right_wrist"
         state_key: Name of the state observation in Isaac Lab (default: "joint_pos")
         upper_body_dof: Number of upper body DOFs in action output (default: 18 for T1)
         state_dof: Number of state DOFs to pass to policy (default: 21 for all T1 joints)
 
     Example:
+        >>> # Single camera
         >>> provider = LeRobotPolicyProvider(
         ...     model_path="kelvinzhaozg/t1_stack_cube_policy",
         ...     device="cuda",
         ...     use_action_chunking=True,
         ...     execution_horizon=8
+        ... )
+        >>> # Multiple cameras
+        >>> provider = LeRobotPolicyProvider(
+        ...     model_path="kelvinzhaozg/t1_stack_cube_policy",
+        ...     device="cuda",
+        ...     image_keys=["head_rgb_cam", "left_wrist_cam", "right_wrist_cam"]
         ... )
         >>> provider.reset()
         >>> obs = env.observation_manager.compute_group("policy")
@@ -60,7 +71,7 @@ class LeRobotPolicyProvider:
         device: str = "cuda",
         use_action_chunking: bool = True,
         execution_horizon: int = 8,
-        image_key: str = "head_rgb_cam",
+        image_keys: str | list[str] = "head_rgb_cam",
         state_key: str = "joint_pos",
         upper_body_dof: int = 18,
         state_dof: int = 21,
@@ -73,7 +84,7 @@ class LeRobotPolicyProvider:
             device: Device for inference ("cuda", "cpu", "mps")
             use_action_chunking: Whether to use action chunking
             execution_horizon: Number of steps before starting next inference
-            image_key: Key for RGB image in Isaac Lab observations
+            image_keys: Single image key or list of image keys for Isaac Lab observations
             state_key: Key for joint positions in Isaac Lab observations
             upper_body_dof: Number of upper body DOFs (actions will be this size)
             state_dof: Number of state DOFs to pass to policy (default: 21 for all T1 joints)
@@ -82,7 +93,13 @@ class LeRobotPolicyProvider:
         self.device = torch.device(device)
         self.use_action_chunking = use_action_chunking
         self.execution_horizon = execution_horizon
-        self.image_key = image_key
+
+        # Convert image_keys to list if single string provided
+        if isinstance(image_keys, str):
+            self.image_keys = [image_keys]
+        else:
+            self.image_keys = image_keys
+
         self.state_key = state_key
         self.upper_body_dof = upper_body_dof
         self.state_dof = state_dof
@@ -107,6 +124,7 @@ class LeRobotPolicyProvider:
         print(f"  Action chunking: {use_action_chunking}")
         if use_action_chunking:
             print(f"  Execution horizon: {execution_horizon}")
+        print(f"  Image observations: {', '.join(self.image_keys)}")
         print(f"  State input dim: {state_dof}")
         print(f"  Action output dim: {upper_body_dof}")
 
@@ -166,12 +184,12 @@ class LeRobotPolicyProvider:
         - obs[state_key]: (num_envs, num_joints) float32
 
         LeRobot expects:
-        - "observation.images.head_rgb": (batch, channels, height, width) float32 [0, 1]
+        - "observation.images.{camera_name}": (batch, channels, height, width) float32 [0, 1]
         - "observation.state": (batch, state_dim) float32
 
         Args:
             obs: Observation dictionary from Isaac Lab observation manager
-                Expected keys: {image_key: Tensor, state_key: Tensor}
+                Expected keys: {image_keys: Tensor, state_key: Tensor}
 
         Returns:
             Preprocessed observation ready for policy inference with LeRobot format
@@ -179,33 +197,40 @@ class LeRobotPolicyProvider:
         # First, convert Isaac Lab format to LeRobot raw format
         raw_obs = {}
 
-        # Handle RGB image
-        if self.image_key in obs:
-            rgb_image = obs[self.image_key]
+        # Handle RGB images (potentially multiple cameras)
+        for image_key in self.image_keys:
+            if image_key in obs:
+                rgb_image = obs[image_key]
 
-            # Extract first environment (we only support single env evaluation for now)
-            if len(rgb_image.shape) == 4:
-                # (num_envs, H, W, C) -> (H, W, C)
-                rgb_image = rgb_image[0]
+                # Extract first environment (we only support single env evaluation for now)
+                if len(rgb_image.shape) == 4:
+                    # (num_envs, H, W, C) -> (H, W, C)
+                    rgb_image = rgb_image[0]
 
-            # Convert to torch tensor if numpy
-            if isinstance(rgb_image, np.ndarray):
-                rgb_image = torch.from_numpy(rgb_image)
+                # Convert to torch tensor if numpy
+                if isinstance(rgb_image, np.ndarray):
+                    rgb_image = torch.from_numpy(rgb_image)
 
-            # Normalize to [0, 1] if uint8
-            if rgb_image.dtype == torch.uint8:
-                rgb_image = rgb_image.float() / 255.0
+                # Normalize to [0, 1] if uint8
+                if rgb_image.dtype == torch.uint8:
+                    rgb_image = rgb_image.float() / 255.0
 
-            # Convert from (H, W, C) to (C, H, W) - channels first WITHOUT batch yet
-            if len(rgb_image.shape) == 3:
-                rgb_image = rgb_image.permute(2, 0, 1)  # (H, W, C) -> (C, H, W)
+                # Convert from (H, W, C) to (C, H, W) - channels first WITHOUT batch yet
+                if len(rgb_image.shape) == 3:
+                    rgb_image = rgb_image.permute(2, 0, 1)  # (H, W, C) -> (C, H, W)
 
-            raw_obs["observation.images.head_rgb"] = rgb_image
-        else:
-            raise ValueError(
-                f"Expected image key '{self.image_key}' not found in observations. "
-                f"Available keys: {list(obs.keys())}"
-            )
+                # Map Isaac Lab camera names to LeRobot observation keys
+                # "head_rgb_cam" -> "head_rgb" -> "observation.images.head_rgb"
+                # "left_wrist_cam" -> "left_wrist" -> "observation.images.left_wrist"
+                # "right_wrist_cam" -> "right_wrist" -> "observation.images.right_wrist"
+                camera_name = image_key.replace("_cam", "")  # Remove "_cam" suffix
+                lerobot_key = f"observation.images.{camera_name}"
+                raw_obs[lerobot_key] = rgb_image
+            else:
+                raise ValueError(
+                    f"Expected image key '{image_key}' not found in observations. "
+                    f"Available keys: {list(obs.keys())}"
+                )
 
         # Handle state observation
         if self.state_key in obs:
@@ -292,7 +317,7 @@ class LeRobotPolicyProvider:
         Returns:
             True if format is valid, False otherwise (with warnings printed)
         """
-        required_keys = [self.image_key, self.state_key]
+        required_keys = self.image_keys + [self.state_key]
 
         for key in required_keys:
             if key not in obs:
@@ -300,12 +325,13 @@ class LeRobotPolicyProvider:
                 print(f"   Available keys: {list(obs.keys())}")
                 return False
 
-        # Check image format
-        rgb = obs[self.image_key]
-        if len(rgb.shape) != 4 or rgb.shape[-1] != 3:
-            print(f"❌ Invalid RGB image shape: {rgb.shape}")
-            print(f"   Expected: (num_envs, height, width, 3)")
-            return False
+        # Check image format for all cameras
+        for image_key in self.image_keys:
+            rgb = obs[image_key]
+            if len(rgb.shape) != 4 or rgb.shape[-1] != 3:
+                print(f"❌ Invalid RGB image shape for {image_key}: {rgb.shape}")
+                print(f"   Expected: (num_envs, height, width, 3)")
+                return False
 
         # Check state format
         state = obs[self.state_key]
@@ -331,7 +357,7 @@ class LeRobotPolicyProvider:
             "use_action_chunking": self.use_action_chunking,
             "state_dim": self.state_dof,
             "action_dim": self.upper_body_dof,
-            "image_key": self.image_key,
+            "image_keys": self.image_keys,
             "state_key": self.state_key,
         }
 

@@ -12,10 +12,20 @@ and evaluates it in an Isaac Lab environment. It supports action chunking to red
 frequency and provides detailed metrics on policy performance.
 
 Usage:
+    # Evaluate with head camera only (default)
     python scripts/tools/eval_lerobot_policy.py \
         --task Isaac-Stack-Cube-T1-v0 \
         --policy_path kelvinzhaozg/t1_stack_cube_policy \
         --num_episodes 10 \
+        --use_action_chunking \
+        --policy_device cuda
+
+    # Evaluate with head camera + wrist cameras
+    python scripts/tools/eval_lerobot_policy.py \
+        --task Isaac-Stack-Cube-T1-v0 \
+        --policy_path kelvinzhaozg/t1_stack_cube_policy \
+        --num_episodes 10 \
+        --use_wrist_cameras \
         --use_action_chunking \
         --policy_device cuda
 """
@@ -49,6 +59,12 @@ parser.add_argument("--video_fps", type=int, default=30, help="FPS for recorded 
 parser.add_argument("--save_trajectories", action="store_true", default=False, help="Save trajectory data.")
 parser.add_argument("--trajectory_dir", type=str, default="./trajectories", help="Directory to save trajectories.")
 parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility.")
+parser.add_argument(
+    "--use_wrist_cameras",
+    action="store_true",
+    default=False,
+    help="Include left and right wrist camera observations for the policy."
+)
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -241,6 +257,20 @@ class PolicyEvaluator:
                     params={"sensor_cfg": SceneEntityCfg("head_rgb_cam"), "data_type": "rgb", "normalize": False}
                 )
 
+            # Add wrist camera observations if requested
+            if self.args.use_wrist_cameras:
+                print("  Adding wrist camera observations...")
+                if not hasattr(env_cfg.observations.policy, "left_wrist_cam"):
+                    env_cfg.observations.policy.left_wrist_cam = ObsTerm(
+                        func=mdp.image,
+                        params={"sensor_cfg": SceneEntityCfg("left_wrist_cam"), "data_type": "rgb", "normalize": False}
+                    )
+                if not hasattr(env_cfg.observations.policy, "right_wrist_cam"):
+                    env_cfg.observations.policy.right_wrist_cam = ObsTerm(
+                        func=mdp.image,
+                        params={"sensor_cfg": SceneEntityCfg("right_wrist_cam"), "data_type": "rgb", "normalize": False}
+                    )
+
             # Add scene camera (third-person view)
             # Camera positioned at (2.5, 2.5, 2.5) looking at workspace around (0, 0, 1.0)
             # Quaternion represents: ~45° yaw (facing inward from XY diagonal) + ~35° pitch down
@@ -266,7 +296,12 @@ class PolicyEvaluator:
                 func=mdp.image,
                 params={"sensor_cfg": SceneEntityCfg("scene_cam"), "data_type": "rgb", "normalize": False}
             )
-            print("✓ Camera observations added (head RGB + scene)")
+
+            # Print summary of cameras added
+            cameras_added = ["head RGB", "scene"]
+            if self.args.use_wrist_cameras:
+                cameras_added.extend(["left wrist", "right wrist"])
+            print(f"✓ Camera observations added: {', '.join(cameras_added)}")
 
         # Disable time-out termination for evaluation
         if hasattr(env_cfg, "terminations") and hasattr(env_cfg.terminations, "time_out"):
@@ -287,12 +322,18 @@ class PolicyEvaluator:
         """Setup the LeRobot policy provider."""
         print(f"\nSetting up policy provider...")
 
+        # Determine which image observations to use
+        image_keys = ["head_rgb_cam"]
+        if self.args.use_wrist_cameras:
+            image_keys.extend(["left_wrist_cam", "right_wrist_cam"])
+
         try:
             self.policy_provider = LeRobotPolicyProvider(
                 model_path=self.args.policy_path,
                 device=self.args.policy_device,
                 use_action_chunking=self.args.use_action_chunking,
                 execution_horizon=self.args.execution_horizon,
+                image_keys=image_keys,
             )
         except Exception as e:
             print(f"Failed to create policy provider: {e}")
