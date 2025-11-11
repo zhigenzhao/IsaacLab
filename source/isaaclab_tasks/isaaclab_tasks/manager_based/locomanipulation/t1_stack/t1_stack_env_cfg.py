@@ -102,16 +102,24 @@ def reset_to_prep(env: ManagerBasedRLEnv, env_ids: torch.Tensor, asset_cfg: Scen
     joint_pos = asset.data.default_joint_pos.clone()
     for joint_name, target_pos in PREP_STATE.joint_pos.items():
         idx = asset.find_joints(joint_name, preserve_order=True)[0]
-        joint_pos[env_ids, idx] = target_pos
+        # find_joints returns a list of indices (even for single matches)
+        # We need to handle cases where the pattern matches multiple joints
+        if len(idx) == 1:
+            # Single joint - simple indexing
+            joint_pos[env_ids, idx[0]] = target_pos
+        else:
+            # Multiple joints matched by regex pattern - broadcast to all matched joints
+            # env_ids: [4], idx: [17, 19] -> need [4, 2] indexing
+            joint_pos[env_ids[:, None], idx] = target_pos
 
     # Reset robot root position and orientation
     root_state = asset.data.default_root_state.clone()
     root_state[env_ids, :3] = torch.tensor(PREP_STATE.pos, device=asset.device)
     root_state[env_ids, 3:7] = torch.tensor(PREP_STATE.rot, device=asset.device)
 
-    # Apply the reset
-    asset.write_root_state_to_sim(root_state, env_ids=env_ids)
-    asset.write_joint_state_to_sim(joint_pos, torch.zeros_like(asset.data.joint_vel), env_ids=env_ids)
+    # Apply the reset (pass only the states for env_ids, not the full tensor)
+    asset.write_root_state_to_sim(root_state[env_ids], env_ids=env_ids)
+    asset.write_joint_state_to_sim(joint_pos[env_ids], torch.zeros_like(asset.data.joint_vel[env_ids]), env_ids=env_ids)
 
 
 ##
@@ -243,14 +251,14 @@ class ObservationsCfg:
             func=t1_stack_mdp.object_grasped_by_hand,
             params={
                 "hand": "left",
-                "object_cfg": SceneEntityCfg("cube_2"),
+                "object_cfg": SceneEntityCfg("cube_1"),
             },
         )
         left_grasp_2 = ObsTerm(
             func=t1_stack_mdp.object_grasped_by_hand,
             params={
                 "hand": "left",
-                "object_cfg": SceneEntityCfg("cube_3"),
+                "object_cfg": SceneEntityCfg("cube_2"),
             },
         )
 
@@ -259,14 +267,14 @@ class ObservationsCfg:
             func=t1_stack_mdp.object_grasped_by_hand,
             params={
                 "hand": "right",
-                "object_cfg": SceneEntityCfg("cube_2"),
+                "object_cfg": SceneEntityCfg("cube_1"),
             },
         )
         right_grasp_2 = ObsTerm(
             func=t1_stack_mdp.object_grasped_by_hand,
             params={
                 "hand": "right",
-                "object_cfg": SceneEntityCfg("cube_3"),
+                "object_cfg": SceneEntityCfg("cube_2"),
             },
         )
 
@@ -314,7 +322,7 @@ class EventCfg:
         params={
             "pose_range": {"x": (0.4, 0.5), "y": (-0.15, 0.15), "z": (1.0703, 1.0703), "yaw": (-1.0, 1.0)},
             "min_separation": 0.1,
-            "asset_cfgs": [SceneEntityCfg("cube_1"), SceneEntityCfg("cube_2"), SceneEntityCfg("cube_3")],
+            "asset_cfgs": [SceneEntityCfg("cube_1"), SceneEntityCfg("cube_2")],
         },
     )
 
@@ -333,11 +341,6 @@ class TerminationsCfg:
     cube_2_dropping = DoneTerm(
         func=mdp.root_height_below_minimum,
         params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("cube_2")}
-    )
-
-    cube_3_dropping = DoneTerm(
-        func=mdp.root_height_below_minimum,
-        params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("cube_3")}
     )
 
     success = DoneTerm(func=t1_stack_mdp.cubes_stacked)
@@ -427,15 +430,6 @@ class T1CubeStackEnvCfg(ManagerBasedRLEnvCfg):
             init_state=RigidObjectCfg.InitialStateCfg(pos=[0.55, 0.05, 1.0703], rot=[1, 0, 0, 0]),
             spawn=UsdFileCfg(
                 usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/red_block.usd",
-                scale=(1.0, 1.0, 1.0),
-                rigid_props=MANIPULATION_OBJECT_PROPERTIES,
-            ),
-        )
-        self.scene.cube_3 = RigidObjectCfg(
-            prim_path="{ENV_REGEX_NS}/Cube_3",
-            init_state=RigidObjectCfg.InitialStateCfg(pos=[0.60, -0.1, 1.0703], rot=[1, 0, 0, 0]),
-            spawn=UsdFileCfg(
-                usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/green_block.usd",
                 scale=(1.0, 1.0, 1.0),
                 rigid_props=MANIPULATION_OBJECT_PROPERTIES,
             ),

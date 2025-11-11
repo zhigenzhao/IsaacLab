@@ -29,13 +29,11 @@ def cube_positions_in_robot_frame(
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     cube_1_cfg: SceneEntityCfg = SceneEntityCfg("cube_1"),
     cube_2_cfg: SceneEntityCfg = SceneEntityCfg("cube_2"),
-    cube_3_cfg: SceneEntityCfg = SceneEntityCfg("cube_3"),
 ) -> torch.Tensor:
     """Cube positions in robot base frame."""
     robot: Articulation = env.scene[robot_cfg.name]
     cube_1: RigidObject = env.scene[cube_1_cfg.name]
     cube_2: RigidObject = env.scene[cube_2_cfg.name]
-    cube_3: RigidObject = env.scene[cube_3_cfg.name]
 
     # Get robot base pose
     robot_pos_w = robot.data.root_pos_w
@@ -48,11 +46,8 @@ def cube_positions_in_robot_frame(
     cube_2_pos_b, _ = math_utils.subtract_frame_transforms(
         robot_pos_w, robot_quat_w, cube_2.data.root_pos_w, cube_2.data.root_quat_w
     )
-    cube_3_pos_b, _ = math_utils.subtract_frame_transforms(
-        robot_pos_w, robot_quat_w, cube_3.data.root_pos_w, cube_3.data.root_quat_w
-    )
 
-    return torch.cat((cube_1_pos_b, cube_2_pos_b, cube_3_pos_b), dim=1)
+    return torch.cat((cube_1_pos_b, cube_2_pos_b), dim=1)
 
 
 def cube_orientations_in_robot_frame(
@@ -60,13 +55,11 @@ def cube_orientations_in_robot_frame(
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     cube_1_cfg: SceneEntityCfg = SceneEntityCfg("cube_1"),
     cube_2_cfg: SceneEntityCfg = SceneEntityCfg("cube_2"),
-    cube_3_cfg: SceneEntityCfg = SceneEntityCfg("cube_3"),
 ) -> torch.Tensor:
     """Cube orientations in robot base frame."""
     robot: Articulation = env.scene[robot_cfg.name]
     cube_1: RigidObject = env.scene[cube_1_cfg.name]
     cube_2: RigidObject = env.scene[cube_2_cfg.name]
-    cube_3: RigidObject = env.scene[cube_3_cfg.name]
 
     # Get robot base pose
     robot_pos_w = robot.data.root_pos_w
@@ -79,11 +72,8 @@ def cube_orientations_in_robot_frame(
     _, cube_2_quat_b = math_utils.subtract_frame_transforms(
         robot_pos_w, robot_quat_w, cube_2.data.root_pos_w, cube_2.data.root_quat_w
     )
-    _, cube_3_quat_b = math_utils.subtract_frame_transforms(
-        robot_pos_w, robot_quat_w, cube_3.data.root_pos_w, cube_3.data.root_quat_w
-    )
 
-    return torch.cat((cube_1_quat_b, cube_2_quat_b, cube_3_quat_b), dim=1)
+    return torch.cat((cube_1_quat_b, cube_2_quat_b), dim=1)
 
 
 def object_grasped_by_hand(
@@ -91,15 +81,19 @@ def object_grasped_by_hand(
     hand: str,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     object_cfg: SceneEntityCfg = SceneEntityCfg("cube_2"),
-    distance_threshold: float = 0.08,
-    gripper_closed_threshold: float = 1.0,
+    distance_threshold: float = 0.15,
+    gripper_closed_min: float = 0.15,
+    gripper_closed_max: float = 0.35,
 ) -> torch.Tensor:
     """Check if object is grasped by specified hand.
 
     Args:
         hand: "left" or "right"
         distance_threshold: Maximum distance between hand and object (meters)
-        gripper_closed_threshold: Minimum gripper joint position to consider closed (rad)
+        gripper_closed_min: Minimum gripper joint position for grasping (rad)
+        gripper_closed_max: Maximum gripper joint position for grasping (rad)
+            The gripper won't fully close when holding an object, so we check
+            if it's in the "grasping range" between partially and mostly closed.
     """
     robot: Articulation = env.scene[robot_cfg.name]
     obj: RigidObject = env.scene[object_cfg.name]
@@ -108,20 +102,29 @@ def object_grasped_by_hand(
     # The T1 gripper uses "left_base_link" and "right_base_link" as the hand bodies
     hand_link = f"{hand}_base_link"
     body_ids = robot.find_bodies(hand_link)[0]
-    hand_pos = robot.data.body_pos_w[:, body_ids]
+    # Ensure we get a single index (find_bodies returns list of indices)
+    body_id = body_ids[0] if hasattr(body_ids, '__getitem__') and len(body_ids) > 0 else body_ids
+    hand_pos = robot.data.body_pos_w[:, body_id]
 
     # Get gripper joint position
     gripper_joint = f"{hand}_Link1"
     joint_ids = robot.find_joints(gripper_joint)[0]
-    gripper_pos = robot.data.joint_pos[:, joint_ids]
+    # Ensure we get a single index (find_joints returns list of indices)
+    joint_id = joint_ids[0] if hasattr(joint_ids, '__getitem__') and len(joint_ids) > 0 else joint_ids
+    gripper_pos = robot.data.joint_pos[:, joint_id]
 
-    # Check distance
+    # Check distance (hand_pos should be shape [num_envs, 3], obj_pos is [num_envs, 3])
     obj_pos = obj.data.root_pos_w
-    distance = torch.norm(hand_pos - obj_pos, dim=1)
+    distance = torch.norm(hand_pos - obj_pos, dim=-1)
 
-    # Check if gripper is closed and object is close
-    is_grasped = (distance < distance_threshold) & (gripper_pos > gripper_closed_threshold)
+    # Check if gripper is in the "grasping range" and object is close
+    # The gripper should be partially closed (holding the object), not fully closed (empty)
+    # distance is [num_envs], gripper_pos is [num_envs]
+    is_close = distance < distance_threshold
+    is_in_grasp_range = (gripper_pos > gripper_closed_min) & (gripper_pos < gripper_closed_max)
+    is_grasped = is_close & is_in_grasp_range
 
+    # Return [num_envs, 1]
     return is_grasped.unsqueeze(-1).float()
 
 
@@ -159,6 +162,39 @@ def object_stacked(
     return is_stacked.unsqueeze(-1).float()
 
 
+def grasp_cube_2(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    object_cfg: SceneEntityCfg = SceneEntityCfg("cube_2"),
+) -> torch.Tensor:
+    """Check if cube_2 is grasped by either hand (for mimic subtask signal).
+
+    This is used as an observation term for the mimic environment to track
+    the 'grasp_cube_2' subtask completion.
+    """
+    # Check if either hand has grasped cube_2
+    left_grasp = object_grasped_by_hand(env, hand="left", robot_cfg=robot_cfg, object_cfg=object_cfg)
+    right_grasp = object_grasped_by_hand(env, hand="right", robot_cfg=robot_cfg, object_cfg=object_cfg)
+
+    # Return True if either hand has grasped
+    # Both return shape (num_envs, 1), so squeeze and combine
+    is_grasped = ((left_grasp.squeeze(-1) > 0.5) | (right_grasp.squeeze(-1) > 0.5)).unsqueeze(-1)
+    return is_grasped.float()
+
+
+def stack_cube_2_on_cube_1(
+    env: ManagerBasedRLEnv,
+    cube_1_cfg: SceneEntityCfg = SceneEntityCfg("cube_1"),
+    cube_2_cfg: SceneEntityCfg = SceneEntityCfg("cube_2"),
+) -> torch.Tensor:
+    """Check if cube_2 is stacked on cube_1 (for mimic subtask signal).
+
+    This is used as an observation term for the mimic environment to track
+    the 'stack_cube_2_on_cube_1' subtask completion.
+    """
+    return object_stacked(env, upper_object_cfg=cube_2_cfg, lower_object_cfg=cube_1_cfg)
+
+
 ##
 # Termination functions
 ##
@@ -168,17 +204,13 @@ def cubes_stacked(
     env: ManagerBasedRLEnv,
     cube_1_cfg: SceneEntityCfg = SceneEntityCfg("cube_1"),
     cube_2_cfg: SceneEntityCfg = SceneEntityCfg("cube_2"),
-    cube_3_cfg: SceneEntityCfg = SceneEntityCfg("cube_3"),
 ) -> torch.Tensor:
-    """Check if all three cubes are stacked (cube_2 on cube_1, cube_3 on cube_2)."""
+    """Check if cube_2 (red) is stacked on cube_1 (blue)."""
     # Check if cube_2 is on cube_1
     stack_1 = object_stacked(env, cube_2_cfg, cube_1_cfg)
 
-    # Check if cube_3 is on cube_2
-    stack_2 = object_stacked(env, cube_3_cfg, cube_2_cfg)
-
-    # Success if both stacks are complete
-    success = (stack_1 > 0.5) & (stack_2 > 0.5)
+    # Success if stack is complete
+    success = stack_1 > 0.5
 
     return success.squeeze(-1)
 

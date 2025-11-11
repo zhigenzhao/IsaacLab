@@ -175,6 +175,47 @@ class LeRobotPolicyProvider:
         if hasattr(self, "action_broker"):
             self.action_broker.reset()
 
+    def _convert_obs_to_lerobot_format(self, obs: dict[str, Tensor]) -> dict[str, Tensor]:
+        """
+        Convert Isaac Lab observation to LeRobot format WITHOUT normalization.
+
+        This creates the raw observation dict with correct LeRobot keys and batch dimension but without:
+        - Normalization (raw values)
+        - Device placement (uses original device)
+
+        Used by postprocessor for delta->absolute conversion which needs raw state values.
+
+        Args:
+            obs: Raw observation from Isaac Lab
+
+        Returns:
+            Dict with LeRobot keys with raw (unnormalized) values but with batch dimension
+        """
+        raw_obs = {}
+
+        # Handle state observation - just extract and convert to LeRobot key
+        if self.state_key in obs:
+            state = obs[self.state_key]
+
+            # Extract first environment if batched
+            if len(state.shape) == 2:
+                state = state[0]
+
+            # Convert to tensor if needed
+            if isinstance(state, np.ndarray):
+                state = torch.from_numpy(state).float()
+
+            # Extract state DOFs (first state_dof elements)
+            state = state[: self.state_dof]
+
+            # Add batch dimension (postprocessor expects batched state)
+            state = state.unsqueeze(0)
+
+            # Store with LeRobot key (raw values, with batch dimension)
+            raw_obs["observation.state"] = state
+
+        return raw_obs
+
     def preprocess_observation(self, obs: dict[str, Tensor]) -> dict[str, Tensor]:
         """
         Convert observation from Isaac Lab format to LeRobot format.
@@ -276,19 +317,37 @@ class LeRobotPolicyProvider:
             Action as torch tensor of shape (upper_body_dof,)
             For T1 robot, this is (18,) joint positions
         """
-        # Preprocess observation
+        # Convert raw observation to LeRobot format (without normalization/batching)
+        # This will be used by postprocessor for delta->absolute conversion
+        raw_obs_lerobot = self._convert_obs_to_lerobot_format(obs)
+
+        # Preprocess observation (normalize, add batch dim, etc.)
         processed_obs = self.preprocess_observation(obs)
 
         # Generate action using policy (potentially through action broker)
-        # Note: Policy returns NORMALIZED actions, postprocessor handles unnormalization
+        # Note: Policy returns NORMALIZED delta actions, postprocessor handles unnormalization + delta->absolute
         with torch.no_grad():
             if self.use_action_chunking:
                 action = self.action_broker.infer(processed_obs)
             else:
                 action = self.policy.select_action(processed_obs)
 
-        # Unnormalize actions using postprocessor (matching lerobot_eval.py pattern)
-        action = self.postprocessor(action)
+        # Unnormalize actions using postprocessor
+        # For delta action policies, postprocessor does:
+        # 1. Unnormalize delta action
+        # 2. Convert to absolute: absolute = unnormalized_delta + raw_state
+        # Therefore we must pass RAW (unnormalized) observation, not preprocessed
+        from lerobot.processor.core import EnvTransition, TransitionKey
+
+        transition_for_postprocessing = EnvTransition({
+            TransitionKey.ACTION: action,
+            TransitionKey.OBSERVATION: raw_obs_lerobot,  # Raw unnormalized obs for delta->absolute
+        })
+
+        # Call postprocessor's _forward directly to bypass the to_transition converter
+        # (which expects only action, not a full transition with observation)
+        processed_transition = self.postprocessor._forward(transition_for_postprocessing)
+        action = processed_transition[TransitionKey.ACTION]
 
         # Ensure it's a tensor
         if not isinstance(action, Tensor):
