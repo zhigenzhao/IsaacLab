@@ -416,7 +416,7 @@ def run_simulation_loop(
         nonlocal running_recording_instance
         running_recording_instance = True
         # Capture initial_state when recording actually begins
-        env.recorder_manager.record_initial_state([0])
+        env.recorder_manager.record_post_reset([0])
         print("▶️  Recording started")
 
     def pause_recording_instance():

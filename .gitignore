@@ -72,3 +72,6 @@ tests/
 
 # Misc
 evaluation_videos/*
+
+#curobo
+src/

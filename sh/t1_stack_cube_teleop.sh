@@ -1,0 +1,1 @@
+python scripts/tools/record_demos_xr.py --task Isaac-T1-Stack-Cube-v0 --teleop_device xr_controller --enable_cameras --device cpu
