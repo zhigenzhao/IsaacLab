@@ -149,6 +149,55 @@ class T1StackMimicEnv(ManagerBasedRLMimicEnv):
             "right": right_gripper
         }
 
+    def get_subtask_start_signals(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:
+        """
+        Gets a dictionary of start signal flags for each subtask in the task.
+
+        For T1 stack task, subtasks start when:
+        1. grasp_cube_2: Starts at timestep 0 (0 before start, 1 after)
+        2. stack_cube_2_on_cube_1: Starts when cube_2 is grasped
+
+        The signals should be 0 before the subtask starts and 1 after it starts.
+        The annotation system looks for the 0->1 transition to identify the start timestep.
+
+        Args:
+            env_ids: Environment indices to get the start signals for. If None, all envs are considered.
+
+        Returns:
+            A dictionary start signal flags (False or True) for each subtask.
+        """
+        if env_ids is None:
+            env_ids = slice(None)
+
+        signals = {}
+
+        # Get grasp signals first (needed for both subtasks)
+        left_grasp = t1_stack_mdp.object_grasped_by_hand(
+            self,
+            hand="left",
+            robot_cfg=SceneEntityCfg("robot"),
+            object_cfg=SceneEntityCfg("cube_2"),
+        )[env_ids]
+
+        right_grasp = t1_stack_mdp.object_grasped_by_hand(
+            self,
+            hand="right",
+            robot_cfg=SceneEntityCfg("robot"),
+            object_cfg=SceneEntityCfg("cube_2"),
+        )[env_ids]
+
+        # Subtask 1 (grasp_cube_2) starts at the beginning of the episode
+        # Since we're recording at each timestep, this should always be 1
+        # The annotation script will handle detecting that it starts at timestep 0
+        # by looking for the first 0->1 transition (which happens at the first timestep)
+        signals["grasp_cube_2"] = torch.ones_like(left_grasp)
+
+        # Subtask 2 starts when cube_2 is grasped
+        # This creates a 0->1 transition when the grasp is detected
+        signals["stack_cube_2_on_cube_1"] = ((left_grasp > 0.5) | (right_grasp > 0.5)).float()
+
+        return signals
+
     def get_subtask_term_signals(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:
         """
         Gets a dictionary of termination signal flags for each subtask in the task.

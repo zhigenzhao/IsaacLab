@@ -269,13 +269,16 @@ def randomize_object_pose(
     """
     num_resets = len(env_ids)
 
+    # Get environment origins for proper multi-environment positioning
+    env_origins = env.scene.env_origins[env_ids]
+
     for i, asset_cfg in enumerate(asset_cfgs):
         asset: RigidObject = env.scene[asset_cfg.name]
 
         # Generate random positions with separation constraint
         max_attempts = 100
         for attempt in range(max_attempts):
-            # Sample random position
+            # Sample random position (relative to environment origin)
             x = torch.rand(num_resets, device=env.device) * (pose_range["x"][1] - pose_range["x"][0]) + pose_range["x"][0]
             y = torch.rand(num_resets, device=env.device) * (pose_range["y"][1] - pose_range["y"][0]) + pose_range["y"][0]
             z = torch.full((num_resets,), pose_range["z"][0], device=env.device)
@@ -288,7 +291,7 @@ def randomize_object_pose(
             for j in range(i):
                 prev_asset: RigidObject = env.scene[asset_cfgs[j].name]
                 prev_pos = prev_asset.data.root_pos_w[env_ids, :2]
-                curr_pos = torch.stack([x, y], dim=1)
+                curr_pos = torch.stack([x, y], dim=1) + env_origins[:, :2]
                 distance = torch.norm(curr_pos - prev_pos, dim=1)
                 valid &= (distance >= min_separation)
 
@@ -300,10 +303,11 @@ def randomize_object_pose(
             torch.zeros_like(yaw), torch.zeros_like(yaw), yaw
         )
 
-        # Set pose
-        pos = torch.stack([x, y, z], dim=1)
+        # Set pose (add environment origin to relative position)
+        pos_relative = torch.stack([x, y, z], dim=1)
+        pos_world = pos_relative + env_origins
         asset.write_root_pose_to_sim(
-            torch.cat([pos, quat], dim=1), env_ids=env_ids
+            torch.cat([pos_world, quat], dim=1), env_ids=env_ids
         )
 
         # Reset velocity

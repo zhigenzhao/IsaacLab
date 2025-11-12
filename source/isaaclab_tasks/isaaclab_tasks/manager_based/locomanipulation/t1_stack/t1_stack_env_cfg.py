@@ -114,7 +114,11 @@ def reset_to_prep(env: ManagerBasedRLEnv, env_ids: torch.Tensor, asset_cfg: Scen
 
     # Reset robot root position and orientation
     root_state = asset.data.default_root_state.clone()
-    root_state[env_ids, :3] = torch.tensor(PREP_STATE.pos, device=asset.device)
+    # Get environment origins for proper multi-environment positioning
+    env_origins = env.scene.env_origins[env_ids]
+    # Add PREP_STATE position relative to each environment origin
+    prep_pos = torch.tensor(PREP_STATE.pos, device=asset.device, dtype=torch.float32)
+    root_state[env_ids, :3] = env_origins + prep_pos
     root_state[env_ids, 3:7] = torch.tensor(PREP_STATE.rot, device=asset.device)
 
     # Apply the reset (pass only the states for env_ids, not the full tensor)
