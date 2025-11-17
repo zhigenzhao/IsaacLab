@@ -1,0 +1,1 @@
+python scripts/tools/eval_lerobot_policy.py --task Isaac-T1-Stack-Cube-v0 --policy_path kelvinzhaozg/diffusion_t1_stack_cube_1112 --record_video --enable_cameras --use_wrist_cameras --headless

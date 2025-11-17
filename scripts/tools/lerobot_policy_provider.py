@@ -15,7 +15,46 @@ from torch import Tensor
 
 from lerobot.configs.policies import PreTrainedConfig
 from lerobot.policies.factory import get_policy_class, make_pre_post_processors
+from lerobot.processor.converters import transition_to_policy_action
+from lerobot.processor.core import EnvTransition, PolicyAction, TransitionKey
 from scripts.tools.lerobot_action_chunk_broker import ActionChunkBroker
+
+
+def policy_action_observation_to_transition(
+    action_observation: tuple[PolicyAction, dict[str, Any]],
+) -> EnvTransition:
+    """
+    Convert a policy action tensor and observation dictionary into an EnvTransition.
+
+    This custom converter allows the postprocessor to accept both action and observation,
+    enabling AbsoluteJointActionsProcessor to access the observation for delta->absolute conversion.
+
+    Args:
+        action_observation: Tuple of (action tensor, observation dict)
+
+    Returns:
+        EnvTransition containing the action and observation
+    """
+    if not isinstance(action_observation, tuple):
+        raise ValueError("action_observation should be a tuple type with an action and observation")
+
+    action, observation = action_observation
+
+    if action is not None and not isinstance(action, PolicyAction):
+        raise ValueError(f"Action should be a PolicyAction type got {type(action)}")
+
+    if observation is not None and not isinstance(observation, dict):
+        raise ValueError(f"Observation should be a dict type got {type(observation)}")
+
+    return {
+        TransitionKey.OBSERVATION: observation,
+        TransitionKey.ACTION: action,
+        TransitionKey.REWARD: None,
+        TransitionKey.DONE: None,
+        TransitionKey.TRUNCATED: None,
+        TransitionKey.INFO: {},
+        TransitionKey.COMPLEMENTARY_DATA: {},
+    }
 
 
 class LeRobotPolicyProvider:
@@ -146,6 +185,23 @@ class LeRobotPolicyProvider:
             self.policy.eval()
             print(f"✓ Loaded {config.type} policy successfully")
 
+            # Override n_action_steps with execution_horizon when not using action chunking
+            if not self.use_action_chunking and hasattr(config, 'n_action_steps'):
+                original_n_action_steps = config.n_action_steps
+                config.n_action_steps = self.execution_horizon
+
+                # Validate constraint for policies with horizon (e.g., diffusion, flow matching)
+                if hasattr(config, 'horizon') and hasattr(config, 'n_obs_steps'):
+                    max_allowed = config.horizon - config.n_obs_steps + 1
+                    if config.n_action_steps > max_allowed:
+                        raise ValueError(
+                            f"execution_horizon ({self.execution_horizon}) exceeds maximum allowed "
+                            f"({max_allowed}) for this policy. Maximum is: "
+                            f"horizon ({config.horizon}) - n_obs_steps ({config.n_obs_steps}) + 1"
+                        )
+
+                print(f"  Overriding n_action_steps: {original_n_action_steps} -> {config.n_action_steps}")
+
             # Load the preprocessor and postprocessor pipelines
             # These handle normalization/unnormalization automatically
             self.preprocessor, self.postprocessor = make_pre_post_processors(
@@ -154,6 +210,13 @@ class LeRobotPolicyProvider:
                 preprocessor_overrides={"device_processor": {"device": str(self.device)}},
                 postprocessor_overrides={"device_processor": {"device": str(self.device)}},
             )
+
+            # Override postprocessor's to_transition to accept (action, observation) tuple
+            # This allows AbsoluteJointActionsProcessor to access unnormalized observation
+            # for delta->absolute conversion: absolute_action = delta_action + current_state
+            self.postprocessor.to_transition = policy_action_observation_to_transition
+            self.postprocessor.to_output = transition_to_policy_action
+
             print(f"✓ Loaded preprocessor and postprocessor pipelines")
 
         except Exception as e:
@@ -174,47 +237,6 @@ class LeRobotPolicyProvider:
 
         if hasattr(self, "action_broker"):
             self.action_broker.reset()
-
-    def _convert_obs_to_lerobot_format(self, obs: dict[str, Tensor]) -> dict[str, Tensor]:
-        """
-        Convert Isaac Lab observation to LeRobot format WITHOUT normalization.
-
-        This creates the raw observation dict with correct LeRobot keys and batch dimension but without:
-        - Normalization (raw values)
-        - Device placement (uses original device)
-
-        Used by postprocessor for delta->absolute conversion which needs raw state values.
-
-        Args:
-            obs: Raw observation from Isaac Lab
-
-        Returns:
-            Dict with LeRobot keys with raw (unnormalized) values but with batch dimension
-        """
-        raw_obs = {}
-
-        # Handle state observation - just extract and convert to LeRobot key
-        if self.state_key in obs:
-            state = obs[self.state_key]
-
-            # Extract first environment if batched
-            if len(state.shape) == 2:
-                state = state[0]
-
-            # Convert to tensor if needed
-            if isinstance(state, np.ndarray):
-                state = torch.from_numpy(state).float()
-
-            # Extract state DOFs (first state_dof elements)
-            state = state[: self.state_dof]
-
-            # Add batch dimension (postprocessor expects batched state)
-            state = state.unsqueeze(0)
-
-            # Store with LeRobot key (raw values, with batch dimension)
-            raw_obs["observation.state"] = state
-
-        return raw_obs
 
     def preprocess_observation(self, obs: dict[str, Tensor]) -> dict[str, Tensor]:
         """
@@ -317,10 +339,6 @@ class LeRobotPolicyProvider:
             Action as torch tensor of shape (upper_body_dof,)
             For T1 robot, this is (18,) joint positions
         """
-        # Convert raw observation to LeRobot format (without normalization/batching)
-        # This will be used by postprocessor for delta->absolute conversion
-        raw_obs_lerobot = self._convert_obs_to_lerobot_format(obs)
-
         # Preprocess observation (normalize, add batch dim, etc.)
         processed_obs = self.preprocess_observation(obs)
 
@@ -332,22 +350,14 @@ class LeRobotPolicyProvider:
             else:
                 action = self.policy.select_action(processed_obs)
 
-        # Unnormalize actions using postprocessor
-        # For delta action policies, postprocessor does:
-        # 1. Unnormalize delta action
-        # 2. Convert to absolute: absolute = unnormalized_delta + raw_state
-        # Therefore we must pass RAW (unnormalized) observation, not preprocessed
-        from lerobot.processor.core import EnvTransition, TransitionKey
-
-        transition_for_postprocessing = EnvTransition({
-            TransitionKey.ACTION: action,
-            TransitionKey.OBSERVATION: raw_obs_lerobot,  # Raw unnormalized obs for delta->absolute
-        })
-
-        # Call postprocessor's _forward directly to bypass the to_transition converter
-        # (which expects only action, not a full transition with observation)
-        processed_transition = self.postprocessor._forward(transition_for_postprocessing)
-        action = processed_transition[TransitionKey.ACTION]
+        # Postprocess action using the proper pipeline
+        # Pass tuple of (action, observation) to allow AbsoluteJointActionsProcessor
+        # to access the observation for delta->absolute conversion
+        # The postprocessor will:
+        # 1. Unnormalize the delta action
+        # 2. Unnormalize the observation
+        # 3. Convert delta to absolute: absolute_action = unnormalized_delta + unnormalized_state
+        action = self.postprocessor((action, processed_obs))
 
         # Ensure it's a tensor
         if not isinstance(action, Tensor):
