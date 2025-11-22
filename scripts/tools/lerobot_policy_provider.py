@@ -320,7 +320,23 @@ class LeRobotPolicyProvider:
 
         # Apply preprocessing pipeline (adds batch dim, normalizes, etc.)
         processed_obs = self.preprocessor(raw_obs)
-        return processed_obs
+
+        # Prepare unnormalized observation for delta->absolute action conversion
+        # The AbsoluteJointActionsProcessor needs unnormalized state with batch dimension
+        raw_obs_with_batch = {}
+        for key, value in raw_obs.items():
+            # Add batch dimension to match processed_obs format
+            if isinstance(value, torch.Tensor):
+                raw_obs_with_batch[key] = value.unsqueeze(0)  # (dim,) -> (1, dim) or (C, H, W) -> (1, C, H, W)
+            else:
+                raw_obs_with_batch[key] = value
+
+        # Move to same device as processed_obs
+        for key, value in raw_obs_with_batch.items():
+            if isinstance(value, torch.Tensor):
+                raw_obs_with_batch[key] = value.to(self.device)
+
+        return processed_obs, raw_obs_with_batch
 
     def get_action(self, obs: dict[str, Tensor]) -> Tensor:
         """
@@ -340,7 +356,8 @@ class LeRobotPolicyProvider:
             For T1 robot, this is (18,) joint positions
         """
         # Preprocess observation (normalize, add batch dim, etc.)
-        processed_obs = self.preprocess_observation(obs)
+        # Returns both processed (normalized) and raw (unnormalized with batch dim) observations
+        processed_obs, raw_obs_with_batch = self.preprocess_observation(obs)
 
         # Generate action using policy (potentially through action broker)
         # Note: Policy returns NORMALIZED delta actions, postprocessor handles unnormalization + delta->absolute
@@ -351,13 +368,13 @@ class LeRobotPolicyProvider:
                 action = self.policy.select_action(processed_obs)
 
         # Postprocess action using the proper pipeline
-        # Pass tuple of (action, observation) to allow AbsoluteJointActionsProcessor
-        # to access the observation for delta->absolute conversion
+        # Pass tuple of (action, raw_observation) to allow AbsoluteJointActionsProcessor
+        # to access the UNNORMALIZED observation for delta->absolute conversion
         # The postprocessor will:
         # 1. Unnormalize the delta action
-        # 2. Unnormalize the observation
+        # 2. Use the raw (unnormalized) observation state
         # 3. Convert delta to absolute: absolute_action = unnormalized_delta + unnormalized_state
-        action = self.postprocessor((action, processed_obs))
+        action = self.postprocessor((action, raw_obs_with_batch))
 
         # Ensure it's a tensor
         if not isinstance(action, Tensor):

@@ -47,7 +47,7 @@ parser.add_argument(
     "--policy_path", type=str, required=True, help="Path to pretrained LeRobot policy (HF Hub ID or local path)."
 )
 parser.add_argument("--num_episodes", type=int, default=10, help="Number of episodes to evaluate.")
-parser.add_argument("--max_episode_length", type=int, default=500, help="Maximum steps per episode.")
+parser.add_argument("--max_episode_length", type=int, default=1500, help="Maximum steps per episode.")
 parser.add_argument(
     "--use_action_chunking", action="store_true", default=False, help="Enable action chunking to reduce inference."
 )
