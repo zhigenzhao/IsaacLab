@@ -75,3 +75,5 @@ evaluation_videos/*
 
 #curobo
 src/*
+
+*.mp4

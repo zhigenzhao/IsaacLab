@@ -1,1 +1,1 @@
-python scripts/tools/eval_lerobot_policy.py --task Isaac-T1-Stack-Cube-v0 --policy_path kelvinzhaozg/diffusion_t1_stack_cube_delta_1121 --record_video --enable_cameras --use_wrist_cameras --headless
+python scripts/tools/eval_lerobot_policy.py --task Isaac-T1-Stack-Cube-v0 --policy_path /home/zzhao300/code/diffusion_planner/outputs/train/2025-12-02/05-07-01_diffusion/checkpoints/200000/pretrained_model --record_video --enable_cameras --use_wrist_cameras --headless --video_dir ./video_diffusion_t1_stack_cube_delta_1202
