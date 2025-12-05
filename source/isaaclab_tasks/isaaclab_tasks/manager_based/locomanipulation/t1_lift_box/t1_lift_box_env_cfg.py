@@ -77,7 +77,7 @@ class T1LiftBoxSceneCfg(InteractiveSceneCfg):
 # Reset state for T1
 ##
 PREP_STATE = ArticulationCfg.InitialStateCfg(
-    pos=(-0.1, 0.0, 0.75),
+    pos=(-0.1, 0.0, 0.7),
     rot=(1, 0.0, 0.0, 0),
     joint_pos={
         "AAHead_yaw": 0.0,

@@ -137,7 +137,7 @@ def randomize_box_pose(
     box_cfg: SceneEntityCfg,
     table_cfg: SceneEntityCfg,
     base_pos_xy: tuple[float, float] = (0.5, 0.0),
-    yaw_range_deg: float = 15.0,
+    yaw_range_deg: float = 12.0,
 ):
     """Randomize box position and orientation on table.
 
