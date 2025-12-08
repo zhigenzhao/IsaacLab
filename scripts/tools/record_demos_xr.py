@@ -75,6 +75,7 @@ simulation_app = app_launcher.app
 
 # Third-party imports
 import gymnasium as gym
+import numpy as np
 import os
 import time
 import torch
@@ -295,6 +296,60 @@ def setup_ui(label_text: str, env: gym.Env) -> InstructionDisplay:
     return instruction_display
 
 
+def get_robot_state_for_twist(robot: object, env_idx: int = 0) -> dict[str, np.ndarray]:
+    """Get robot state dictionary for TWIST retargeter.
+
+    Extracts joint positions, velocities, base orientation, and angular velocity
+    from the robot asset for use with TWIST policy retargeter.
+
+    Args:
+        robot: The robot asset from the environment scene
+        env_idx: Environment index to get state for (default: 0)
+
+    Returns:
+        dict: Robot state dictionary containing:
+            - joint_pos: (n_dofs,) joint positions in radians
+            - joint_vel: (n_dofs,) joint velocities in rad/s
+            - base_quat: (4,) base orientation quaternion [x, y, z, w]
+            - base_ang_vel: (3,) base angular velocity in rad/s
+    """
+    # Get joint state
+    joint_pos = robot.data.joint_pos[env_idx].cpu().numpy()
+    joint_vel = robot.data.joint_vel[env_idx].cpu().numpy()
+
+    # Get base orientation quaternion [w, x, y, z] -> [x, y, z, w]
+    base_quat_wxyz = robot.data.root_quat_w[env_idx].cpu().numpy()
+    base_quat_xyzw = np.array([base_quat_wxyz[1], base_quat_wxyz[2], base_quat_wxyz[3], base_quat_wxyz[0]])
+
+    # Get base angular velocity (in world frame, need to transform to body frame)
+    base_ang_vel = robot.data.root_ang_vel_w[env_idx].cpu().numpy()
+
+    return {
+        "joint_pos": joint_pos,
+        "joint_vel": joint_vel,
+        "base_quat": base_quat_xyzw,
+        "base_ang_vel": base_ang_vel,
+    }
+
+
+def sync_twist_retargeter_state(teleop_interface: object, robot: object, env_idx: int = 0):
+    """Sync robot state to TWIST retargeter(s).
+
+    Args:
+        teleop_interface: The teleoperation interface containing retargeters
+        robot: The robot asset from the environment scene
+        env_idx: Environment index to sync state for (default: 0)
+    """
+    if not hasattr(teleop_interface, '_retargeters'):
+        return
+
+    robot_state = get_robot_state_for_twist(robot, env_idx)
+
+    for retargeter in teleop_interface._retargeters:
+        if hasattr(retargeter, 'set_robot_state'):
+            retargeter.set_robot_state(robot_state)
+
+
 def process_success_condition(env: gym.Env, success_term: object | None, success_step_count: int) -> tuple[int, bool]:
     """Process the success condition for the current step.
 
@@ -338,6 +393,7 @@ def handle_reset(
     teleop_interface: object | None = None,
     robot: object | None = None,
     upper_body_joint_ids: torch.Tensor | None = None,
+    has_twist_retargeter: bool = False,
 ) -> int:
     """Handle resetting the environment.
 
@@ -353,6 +409,7 @@ def handle_reset(
         teleop_interface: Optional teleop interface for state sync
         robot: Optional robot asset for reading joint positions
         upper_body_joint_ids: Optional joint IDs for state sync
+        has_twist_retargeter: Whether TWIST retargeter state sync is needed
 
     Returns:
         int: Reset success step count (0)
@@ -372,9 +429,23 @@ def handle_reset(
         if hasattr(teleop_interface, '_retargeters'):
             for retargeter in teleop_interface._retargeters:
                 if hasattr(retargeter, 'reset'):
-                    # Pass joint positions as optional kwarg - retargeters use it if needed
-                    retargeter.reset(joint_positions=measured_joint_pos.cpu().numpy())
+                    # Check which reset signature the retargeter supports
+                    if hasattr(retargeter, 'set_robot_state'):
+                        # TWIST retargeter - use robot_state dict
+                        robot_state = get_robot_state_for_twist(robot, env_idx=0)
+                        retargeter.reset(robot_state=robot_state)
+                    else:
+                        # Other retargeters - try joint_positions kwarg
+                        try:
+                            retargeter.reset(joint_positions=measured_joint_pos.cpu().numpy())
+                        except TypeError:
+                            retargeter.reset()
                     print(f"  Reset {type(retargeter).__name__} with state sync")
+
+    # Sync TWIST retargeter state after reset
+    if has_twist_retargeter and teleop_interface is not None and robot is not None:
+        sync_twist_retargeter_state(teleop_interface, robot, env_idx=0)
+        print("  TWIST retargeter state synchronized")
 
     return success_step_count
 
@@ -468,6 +539,7 @@ def run_simulation_loop(
     # Setup for Mink IK state synchronization (for XR controller with T1/humanoid robots)
     upper_body_joint_ids = None
     robot = None
+    has_twist_retargeter = False
     if "robot" in env.scene.keys():
         robot = env.scene["robot"]
         # Upper body joint names for T1 humanoid robot (16 joints)
@@ -485,6 +557,13 @@ def run_simulation_loop(
             omni.log.warn(f"Could not find upper body joints for state sync: {e}. State sync disabled.")
             upper_body_joint_ids = None
 
+        # Check if any retargeter needs full robot state (e.g., TWIST retargeter)
+        if hasattr(teleop_interface, '_retargeters'):
+            for retargeter in teleop_interface._retargeters:
+                if hasattr(retargeter, 'set_robot_state'):
+                    has_twist_retargeter = True
+                    omni.log.info(f"TWIST state synchronization enabled for {type(retargeter).__name__}")
+
     # Reset before starting
     env.sim.reset()
     env.reset()
@@ -499,9 +578,23 @@ def run_simulation_loop(
         if hasattr(teleop_interface, '_retargeters'):
             for retargeter in teleop_interface._retargeters:
                 if hasattr(retargeter, 'reset'):
-                    # Pass joint positions as optional kwarg - retargeters use it if needed
-                    retargeter.reset(joint_positions=measured_joint_pos.cpu().numpy())
+                    # Check which reset signature the retargeter supports
+                    if hasattr(retargeter, 'set_robot_state'):
+                        # TWIST retargeter - use robot_state dict
+                        robot_state = get_robot_state_for_twist(robot, env_idx=0)
+                        retargeter.reset(robot_state=robot_state)
+                    else:
+                        # Other retargeters - try joint_positions kwarg
+                        try:
+                            retargeter.reset(joint_positions=measured_joint_pos.cpu().numpy())
+                        except TypeError:
+                            retargeter.reset()
                     omni.log.info(f"Reset {type(retargeter).__name__} with state sync")
+
+    # Sync TWIST retargeter state on initial reset
+    if has_twist_retargeter and robot is not None:
+        sync_twist_retargeter_state(teleop_interface, robot, env_idx=0)
+        omni.log.info("Initial TWIST retargeter state synchronized")
 
     label_text = f"Recorded {current_recorded_demo_count} successful demonstrations."
     instruction_display = setup_ui(label_text, env)
@@ -515,6 +608,10 @@ def run_simulation_loop(
                 measured_joint_pos = robot.data.joint_pos[0, upper_body_joint_ids]
                 if hasattr(teleop_interface, 'set_measured_joint_positions'):
                     teleop_interface.set_measured_joint_positions(measured_joint_pos)
+
+            # Sync TWIST retargeter state (for proprioceptive observations)
+            if has_twist_retargeter and robot is not None:
+                sync_twist_retargeter_state(teleop_interface, robot, env_idx=0)
 
             # Get keyboard command
             action = teleop_interface.advance()
@@ -573,7 +670,7 @@ def run_simulation_loop(
             if should_reset_recording_instance:
                 success_step_count = handle_reset(
                     env, success_step_count, instruction_display, label_text,
-                    teleop_interface, robot, upper_body_joint_ids
+                    teleop_interface, robot, upper_body_joint_ids, has_twist_retargeter
                 )
                 should_reset_recording_instance = False
 

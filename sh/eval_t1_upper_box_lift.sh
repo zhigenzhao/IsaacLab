@@ -1,1 +1,1 @@
-python scripts/tools/eval_lerobot_policy.py --task Isaac-T1-Lift-Box-v0 --policy_path /home/kelvin/code/diffusion_planner/outputs/train/2025-12-04/18-56-55_flow_matching_dit/checkpoints/450000/pretrained_model --record_video --enable_cameras --use_wrist_cameras --headless --video_dir ./video_fm_t1_lift_box_1204
+python scripts/tools/eval_lerobot_policy.py --task Isaac-T1-Lift-Box-v0 --policy_path kelvinzhaozg/vqflow_t1_lift_box_1207 --record_video --enable_cameras --use_wrist_cameras --headless --video_dir ./video_vqflow_t1_lift_box_1207

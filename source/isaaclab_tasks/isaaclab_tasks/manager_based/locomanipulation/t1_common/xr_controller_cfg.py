@@ -7,9 +7,11 @@
 
 from isaaclab.devices.xrobotoolkit import XRControllerDeviceCfg, XRControllerFullBodyDeviceCfg
 from isaaclab.devices.xrobotoolkit.retargeters import (
+    TwistOutputFormat,
     XRGripperRetargeterCfg,
     XRT1GMRRetargeterCfg,
     XRT1MinkIKRetargeterCfg,
+    XRTwistRetargeterCfg,
 )
 
 
@@ -156,5 +158,87 @@ def create_t1_xr_controller_full_body_cfg(
                 sim_device=sim_device,
             ),
         ],
+        sim_device=sim_device,
+    )
+
+
+def create_t1_xr_twist_cfg(
+    twist_config_path: str,
+    sim_device: str = "cuda:0",
+    human_height: float | None = None,
+    use_threading: bool = True,
+    thread_rate_hz: float = 50.0,
+    enable_grippers: bool = True,
+    gripper_open_value: float = -0.523,
+    gripper_closed_value: float = 1.57,
+) -> XRControllerFullBodyDeviceCfg:
+    """Create XRControllerFullBodyDevice config with TWIST retargeter for T1.
+
+    This configuration uses XRControllerFullBodyDevice with 24-joint body tracking
+    and XRTwistRetargeter for whole-body motion tracking via the TWIST policy.
+
+    Args:
+        twist_config_path: Path to TWIST configuration YAML file containing model path,
+            joint indices, and policy parameters.
+        sim_device: Simulation device (e.g., "cuda:0")
+        human_height: Human height in meters. If None, auto-estimate from first frame.
+        use_threading: If True, run TWIST inference in a separate thread.
+        thread_rate_hz: Thread update rate in Hz (when use_threading=True).
+        enable_grippers: If True, include gripper retargeters for binary gripper control.
+        gripper_open_value: Joint position for open gripper state.
+        gripper_closed_value: Joint position for closed gripper state.
+
+    Returns:
+        Configured XR full-body controller device with TWIST retargeting
+
+    Note:
+        The TWIST config YAML must contain:
+        - model_path: Path to ONNX model
+        - TWIST_POLICY_DOFS: Number of policy DOFs (e.g., 27)
+        - TWIST_HIST_LEN: Observation history length (e.g., 10)
+        - TWIST_POLICY_INDICES: Joint indices for policy output
+        - TWIST_DEFAULT_JOINT_POS: Default joint positions
+        - POLICY_ACTION_SCALE: Action scaling factor
+    """
+    retargeters = [
+        XRTwistRetargeterCfg(
+            twist_config_path=twist_config_path,
+            robot_type="booster_t1_29dof",
+            human_height=human_height,
+            use_ground_alignment=True,
+            use_threading=use_threading,
+            thread_rate_hz=thread_rate_hz,
+            output_format=TwistOutputFormat.ABSOLUTE,
+            sim_device=sim_device,
+        ),
+    ]
+
+    # Add gripper retargeters for binary gripper control via XR triggers
+    if enable_grippers:
+        retargeters.extend([
+            XRGripperRetargeterCfg(
+                control_hand="left",
+                input_source="trigger",
+                mode="binary",
+                binary_threshold=0.5,
+                invert=False,
+                open_value=gripper_open_value,
+                closed_value=gripper_closed_value,
+                sim_device=sim_device,
+            ),
+            XRGripperRetargeterCfg(
+                control_hand="right",
+                input_source="trigger",
+                mode="binary",
+                binary_threshold=0.5,
+                invert=False,
+                open_value=gripper_open_value,
+                closed_value=gripper_closed_value,
+                sim_device=sim_device,
+            ),
+        ])
+
+    return XRControllerFullBodyDeviceCfg(
+        retargeters=retargeters,
         sim_device=sim_device,
     )

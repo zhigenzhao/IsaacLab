@@ -214,9 +214,9 @@ class XRGMRRetargeter(RetargeterBase):
     def __del__(self):
         """Destructor to clean up thread and viewer resources."""
         # Stop background thread if running
-        if self._use_threading and hasattr(self, 'is_running'):
+        if hasattr(self, '_use_threading') and self._use_threading and hasattr(self, 'is_running'):
             self.is_running = False
-            if self._gmr_thread is not None and self._gmr_thread.is_alive():
+            if hasattr(self, '_gmr_thread') and self._gmr_thread is not None and self._gmr_thread.is_alive():
                 print("[XRGMRRetargeter] Stopping background thread...")
                 self._gmr_thread.join(timeout=2.0)
                 if self._gmr_thread.is_alive():
@@ -225,7 +225,7 @@ class XRGMRRetargeter(RetargeterBase):
                     print("[XRGMRRetargeter] Thread stopped")
 
         # Close viewer if active
-        if self._viewer is not None:
+        if hasattr(self, '_viewer') and self._viewer is not None:
             try:
                 self._viewer.close()
                 print("[XRGMRRetargeter] Viewer closed")
