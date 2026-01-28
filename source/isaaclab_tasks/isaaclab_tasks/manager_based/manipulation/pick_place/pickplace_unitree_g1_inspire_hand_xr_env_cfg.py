@@ -175,12 +175,14 @@ class ActionsCfg:
     arm_joint_pos = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=G1_ARM_JOINT_NAMES,
+        preserve_order=True,
     )
 
     # Hand joint position control (24 joints)
     hand_joint_pos = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=G1_HAND_JOINT_NAMES,
+        preserve_order=True,
     )
 
 
