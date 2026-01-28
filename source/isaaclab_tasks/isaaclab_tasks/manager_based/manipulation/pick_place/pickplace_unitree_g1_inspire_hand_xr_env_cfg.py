@@ -10,10 +10,9 @@ Mink IK for arm control. It bypasses the Pink IK action system and uses
 direct joint position control instead.
 """
 
-import torch
-
 import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
+import torch
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.devices.device_base import DevicesCfg
 from isaaclab.devices.xrobotoolkit import (
@@ -36,7 +35,6 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab_assets.robots.unitree import G1_INSPIRE_FTP_CFG  # isort: skip
 
 from . import mdp as pick_place_mdp
-
 
 # G1 arm joint names (14 joints total: 7 per arm)
 G1_ARM_JOINT_NAMES = [
@@ -315,7 +313,7 @@ class PickPlaceG1InspireFTPXREnvCfg(ManagerBasedRLEnvCfg):
                         # G1 Mink IK for arm control (14 joints: 7 left + 7 right)
                         # Motion tracker disabled by default (motion_tracker_config=None)
                         XRG1MinkIKRetargeterCfg(
-                            headless=True,
+                            headless=False,
                             reference_frame="trunk",
                             sim_device=self.sim.device,
                         ),

@@ -117,8 +117,8 @@ class XRG1MinkIKRetargeterCfg(RetargeterCfg):
     for G1 humanoid arm control from XR controller poses.
     """
 
-    xml_path: str = "source/isaaclab_assets/isaaclab_assets/robots/unitree_g1/xml/scene_g1_ik.xml"
-    """Path to MuJoCo XML model file for G1 IK."""
+    xml_path: str = "source/isaaclab_assets/isaaclab_assets/robots/unitree_g1/xml/scene_g1_upper_ik.xml"
+    """Path to MuJoCo XML model file for G1 upper body IK (arm joints only)."""
 
     headless: bool = True
     """If True, run without MuJoCo viewer visualization."""

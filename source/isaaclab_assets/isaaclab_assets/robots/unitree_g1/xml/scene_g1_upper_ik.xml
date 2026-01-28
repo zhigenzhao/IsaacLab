@@ -1,5 +1,5 @@
 <mujoco model="G1 Mink IK">
-  <include file="g1_ik.xml" />
+  <include file="g1_upper_ik.xml" />
 
   <statistic center="0.2 0 0.9" extent="0.8" meansize="0.04" />
 
@@ -33,12 +33,8 @@
   </worldbody>
 
   <keyframe>
+    <!-- Arm joints only: 14 values (7 left + 7 right) -->
     <key name="home" qpos="
-      0 0 0.79
-      1 0 0 0
-      0 0 0 0 0 0
-      0 0 0 0 0 0
-      0 0 0
       0.2 0.2 0 1.28 0 0 0
       0.2 -0.2 0 1.28 0 0 0
     " />
