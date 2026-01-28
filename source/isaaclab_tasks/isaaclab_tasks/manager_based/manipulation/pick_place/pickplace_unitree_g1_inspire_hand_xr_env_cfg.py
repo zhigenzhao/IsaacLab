@@ -27,6 +27,7 @@ from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sensors import CameraCfg
 from isaaclab.sim.schemas.schemas_cfg import MassPropertiesCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
 from isaaclab.utils import configclass
@@ -157,6 +158,26 @@ class G1XRSceneCfg(InteractiveSceneCfg):
         spawn=GroundPlaneCfg(),
     )
 
+    # Head camera (RealSense D435i mounted on torso/head)
+    head_cam = CameraCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/torso_link/d435_link/camera",
+        update_period=0.0,
+        height=240,
+        width=424,
+        data_types=["rgb"],
+        spawn=sim_utils.PinholeCameraCfg(
+            focal_length=1.88,
+            focus_distance=400.0,
+            horizontal_aperture=3.74,
+            clipping_range=(0.1, 10.0),
+        ),
+        offset=CameraCfg.OffsetCfg(
+            pos=(0.0, 0.0, 0.0),
+            rot=(0.9848078, 0.0, -0.1736482, 0.0),
+            convention="world",
+        ),
+    )
+
     # Lights
     light = AssetBaseCfg(
         prim_path="/World/light",
@@ -211,6 +232,15 @@ class ObservationsCfg:
         right_eef_quat = ObsTerm(func=pick_place_mdp.get_eef_quat, params={"link_name": "right_wrist_yaw_link"})
 
         hand_joint_state = ObsTerm(func=pick_place_mdp.get_robot_joint_state, params={"joint_names": ["R_.*", "L_.*"]})
+
+        head_cam_rgb = ObsTerm(
+            func=mdp.image,
+            params={
+                "sensor_cfg": SceneEntityCfg("head_cam"),
+                "data_type": "rgb",
+                "normalize": False,
+            },
+        )
 
         object = ObsTerm(
             func=pick_place_mdp.object_obs,
