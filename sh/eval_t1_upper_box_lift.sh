@@ -1,1 +1,1 @@
-python scripts/tools/eval_lerobot_policy.py --task Isaac-T1-Lift-Box-v0 --policy_path kelvinzhaozg/vqflow_t1_lift_box_1207 --record_video --enable_cameras --use_wrist_cameras --headless --video_dir ./video_vqflow_t1_lift_box_1207
+python scripts/tools/eval_lerobot_policy.py --task Isaac-T1-Lift-Box-v0 --policy_path kelvinzhaozg/vqcatflow_t1_lift_box_0119 --record_video --enable_cameras --use_wrist_cameras --headless --video_dir ./video_vqflow_t1_lift_box_1207

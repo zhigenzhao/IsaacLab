@@ -40,8 +40,12 @@ with contextlib.suppress(ModuleNotFoundError):
         XRControllerDeviceCfg,
         XRControllerFullBodyDevice,
         XRControllerFullBodyDeviceCfg,
+        XRG1MinkIKRetargeter,
+        XRG1MinkIKRetargeterCfg,
         XRGripperRetargeter,
         XRGripperRetargeterCfg,
+        XRInspireHandRetargeter,
+        XRInspireHandRetargeterCfg,
         XRSe3AbsRetargeter,
         XRSe3AbsRetargeterCfg,
         XRSe3RelRetargeter,
@@ -91,7 +95,9 @@ RETARGETER_MAP: dict[type[RetargeterCfg], type[RetargeterBase]] = {
 with contextlib.suppress(NameError):
     RETARGETER_MAP[XRSe3RelRetargeterCfg] = XRSe3RelRetargeter
     RETARGETER_MAP[XRSe3AbsRetargeterCfg] = XRSe3AbsRetargeter
+    RETARGETER_MAP[XRG1MinkIKRetargeterCfg] = XRG1MinkIKRetargeter
     RETARGETER_MAP[XRGripperRetargeterCfg] = XRGripperRetargeter
+    RETARGETER_MAP[XRInspireHandRetargeterCfg] = XRInspireHandRetargeter
     RETARGETER_MAP[XRT1GMRRetargeterCfg] = XRT1GMRRetargeter
     RETARGETER_MAP[XRT1MinkIKRetargeterCfg] = XRT1MinkIKRetargeter
     RETARGETER_MAP[XRTwistRetargeterCfg] = XRTwistRetargeter

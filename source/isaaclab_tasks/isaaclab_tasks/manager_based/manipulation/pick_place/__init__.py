@@ -13,6 +13,7 @@ from . import (
     pickplace_gr1t2_env_cfg,
     pickplace_gr1t2_waist_enabled_env_cfg,
     pickplace_unitree_g1_inspire_hand_env_cfg,
+    pickplace_unitree_g1_inspire_hand_xr_env_cfg,
 )
 
 gym.register(
@@ -61,6 +62,15 @@ gym.register(
     kwargs={
         "env_cfg_entry_point": pickplace_unitree_g1_inspire_hand_env_cfg.PickPlaceG1InspireFTPEnvCfg,
         "robomimic_bc_cfg_entry_point": os.path.join(agents.__path__[0], "robomimic/bc_rnn_low_dim.json"),
+    },
+    disable_env_checker=True,
+)
+
+gym.register(
+    id="Isaac-PickPlace-G1-InspireFTP-XR-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": pickplace_unitree_g1_inspire_hand_xr_env_cfg.PickPlaceG1InspireFTPXREnvCfg,
     },
     disable_env_checker=True,
 )
