@@ -328,12 +328,12 @@ class PickPlaceG1InspireFTPXREnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         """Post initialization - configure simulation and XR teleop devices."""
         # General settings
-        self.decimation = 6
+        self.decimation = 10
         self.episode_length_s = 20.0
 
         # Simulation settings
-        self.sim.dt = 1 / 120  # 120Hz
-        self.sim.render_interval = 2
+        self.sim.dt = 0.002
+        self.sim.render_interval = 5
 
         # Configure XR controller teleoperation with Mink IK retargeter
         self.teleop_devices = DevicesCfg(
