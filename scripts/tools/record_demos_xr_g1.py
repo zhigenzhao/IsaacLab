@@ -632,6 +632,12 @@ def run_simulation_loop(
                 env.sim.render()
                 continue
 
+            # Copy raw gripper command onto env for the observation term
+            for retargeter in teleop_interface._retargeters:
+                if hasattr(retargeter, 'raw_gripper_command'):
+                    env._raw_gripper_command = retargeter.raw_gripper_command.clone()
+                    break
+
             # Expand to batch dimension
             actions = action.repeat(env.num_envs, 1)
 

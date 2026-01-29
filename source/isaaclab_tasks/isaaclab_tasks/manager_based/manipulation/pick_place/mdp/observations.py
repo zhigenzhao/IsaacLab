@@ -83,3 +83,17 @@ def get_all_robot_link_state(
     all_robot_link_pos = body_pos_w
 
     return all_robot_link_pos
+
+
+def raw_gripper_command(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Raw gripper trigger values [left_trigger, right_trigger] before retargeting.
+
+    Reads from env._raw_gripper_command, set by the recording script each step.
+
+    Returns:
+        torch.Tensor: shape (num_envs, 2) with values in [0, 1].
+    """
+    cmd = getattr(env, "_raw_gripper_command", None)
+    if cmd is not None:
+        return cmd.unsqueeze(0).expand(env.num_envs, -1)
+    return torch.zeros(env.num_envs, 2, dtype=torch.float32, device=env.device)

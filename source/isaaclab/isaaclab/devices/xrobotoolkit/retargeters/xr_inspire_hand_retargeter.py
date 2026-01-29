@@ -92,6 +92,9 @@ class XRInspireHandRetargeter(RetargeterBase):
         self._binary_threshold = cfg.binary_threshold
         self._invert = cfg.invert
 
+        # Raw trigger values before retargeting [left_trigger, right_trigger]
+        self.raw_gripper_command = torch.zeros(2, dtype=torch.float32, device=self._sim_device)
+
         # Build open/closed position arrays matching joint order
         self._open_positions: list[float] = []
         self._closed_positions: list[float] = []
@@ -139,6 +142,11 @@ class XRInspireHandRetargeter(RetargeterBase):
         # Get trigger values
         left_trigger = data.get(XRControllerDevice.XRControllerDeviceValues.LEFT_TRIGGER.value, 0.0)
         right_trigger = data.get(XRControllerDevice.XRControllerDeviceValues.RIGHT_TRIGGER.value, 0.0)
+
+        # Store raw trigger values before any processing
+        self.raw_gripper_command = torch.tensor(
+            [left_trigger, right_trigger], dtype=torch.float32, device=self._sim_device
+        )
 
         # Apply inversion if requested
         if self._invert:

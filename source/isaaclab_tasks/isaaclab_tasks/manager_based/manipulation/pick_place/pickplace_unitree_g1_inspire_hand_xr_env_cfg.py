@@ -233,6 +233,8 @@ class ObservationsCfg:
 
         hand_joint_state = ObsTerm(func=pick_place_mdp.get_robot_joint_state, params={"joint_names": ["R_.*", "L_.*"]})
 
+        raw_gripper_command = ObsTerm(func=pick_place_mdp.raw_gripper_command)
+
         head_cam_rgb = ObsTerm(
             func=mdp.image,
             params={
@@ -345,7 +347,7 @@ class PickPlaceG1InspireFTPXREnvCfg(ManagerBasedRLEnvCfg):
                         # G1 Mink IK for arm control (14 joints: 7 left + 7 right)
                         # Motion tracker disabled by default (motion_tracker_config=None)
                         XRG1MinkIKRetargeterCfg(
-                            headless=False,
+                            headless=True,
                             reference_frame="trunk",
                             sim_device=self.sim.device,
                         ),
