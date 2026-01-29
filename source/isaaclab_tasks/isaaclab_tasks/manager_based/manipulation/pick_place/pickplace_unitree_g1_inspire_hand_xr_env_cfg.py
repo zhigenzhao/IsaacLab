@@ -118,7 +118,7 @@ class G1XRSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = G1_INSPIRE_FTP_CFG.replace(
         prim_path="/World/envs/env_.*/Robot",
         init_state=ArticulationCfg.InitialStateCfg(
-            pos=(0, 0, 1.0),
+            pos=(0, 0, 1.05),
             rot=(0.7071, 0, 0, 0.7071),
             joint_pos={
                 # Arms at rest

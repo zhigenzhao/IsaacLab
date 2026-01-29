@@ -165,6 +165,18 @@ class XRG1MinkIKRetargeterCfg(RetargeterCfg):
     """Scale factor for arm length when mapping tracker-to-controller offset to robot.
     Use 1.0 for 1:1 mapping, <1.0 for shorter robot arms, >1.0 for longer robot arms."""
 
+    posture_cost_shoulder: float = 0.5
+    """Posture regularization cost for shoulder joints (3 per arm).
+    Higher values pull shoulders more strongly toward home posture."""
+
+    posture_cost_elbow: float = 0.1
+    """Posture regularization cost for elbow joints (1 per arm).
+    Light regularization to prevent elbow drift."""
+
+    posture_cost_wrist: float = 0.0
+    """Posture regularization cost for wrist joints (3 per arm).
+    Zero by default so wrist joints are free to track hand targets."""
+
 
 class XRG1MinkIKRetargeter(RetargeterBase):
     """Retargets XR controller poses to G1 humanoid arm joint positions using Mink IK.
@@ -211,8 +223,18 @@ class XRG1MinkIKRetargeter(RetargeterBase):
         self.configuration = ik.Configuration(self.mj_model, self.mj_model.keyframe("home").qpos)
 
         # Define IK tasks for G1 robot
-        # Posture task maintains all joints at home position when not actively controlled
-        posture_costs = np.array([0.05] * self.mj_model.nv)  # Uniform cost for all joints
+        # Build per-joint posture costs: higher for shoulders, zero for wrists.
+        # This approximates null-space posture regularization — shoulder joints
+        # are pulled toward home without interfering with wrist tracking tasks.
+        posture_costs = np.zeros(self.mj_model.nv)
+        for i, jnt_name in enumerate(G1_ARM_JOINT_NAMES):
+            jnt_id = self.mj_model.joint(jnt_name).id
+            if "shoulder" in jnt_name:
+                posture_costs[jnt_id] = cfg.posture_cost_shoulder
+            elif "elbow" in jnt_name:
+                posture_costs[jnt_id] = cfg.posture_cost_elbow
+            else:  # wrist joints
+                posture_costs[jnt_id] = cfg.posture_cost_wrist
         self.posture_task = ik.PostureTask(self.mj_model, cost=posture_costs)
         self.lh_task = ik.FrameTask(
             frame_name="left_hand",
