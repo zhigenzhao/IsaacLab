@@ -609,3 +609,78 @@ G1_INSPIRE_FTP_CFG.actuators["hands"] = ImplicitActuatorCfg(
     damping=0.2,
     armature=0.001,
 )
+
+
+"""
+Configuration for the Unitree G1 Humanoid robot with Inspire hand for TWIST2 teleoperation.
+
+This configuration is optimized for whole-body locomotion control using the TWIST2 policy,
+with a floating base (not fixed) to allow locomotion. It inherits from G1_INSPIRE_FTP_CFG
+and modifies only the necessary settings for locomotion.
+"""
+# Copy from working G1_INSPIRE_FTP_CFG and modify for locomotion
+G1_INSPIRE_TWIST2_CFG = G1_INSPIRE_FTP_CFG.copy()
+# Enable gravity for locomotion
+G1_INSPIRE_TWIST2_CFG.spawn.rigid_props.disable_gravity = False
+# Floating base for locomotion (not fixed)
+G1_INSPIRE_TWIST2_CFG.spawn.articulation_props.fix_root_link = False
+# Standing pose matching TWIST2 default joint positions
+G1_INSPIRE_TWIST2_CFG.init_state = ArticulationCfg.InitialStateCfg(
+    pos=(0.0, 0.0, 0.793),  # Standing height for G1
+    joint_pos={
+        # Leg joints - default standing pose
+        "left_hip_pitch_joint": -0.2,
+        "left_hip_roll_joint": 0.0,
+        "left_hip_yaw_joint": 0.0,
+        "left_knee_joint": 0.4,
+        "left_ankle_pitch_joint": -0.2,
+        "left_ankle_roll_joint": 0.0,
+        "right_hip_pitch_joint": -0.2,
+        "right_hip_roll_joint": 0.0,
+        "right_hip_yaw_joint": 0.0,
+        "right_knee_joint": 0.4,
+        "right_ankle_pitch_joint": -0.2,
+        "right_ankle_roll_joint": 0.0,
+        # Torso joints
+        "waist_yaw_joint": 0.0,
+        "waist_roll_joint": 0.0,
+        "waist_pitch_joint": 0.0,
+        # Arm joints - relaxed pose
+        "left_shoulder_pitch_joint": 0.0,
+        "left_shoulder_roll_joint": 0.4,
+        "left_shoulder_yaw_joint": 0.0,
+        "left_elbow_joint": 1.2,
+        "left_wrist_roll_joint": 0.0,
+        "left_wrist_pitch_joint": 0.0,
+        "left_wrist_yaw_joint": 0.0,
+        "right_shoulder_pitch_joint": 0.0,
+        "right_shoulder_roll_joint": -0.4,
+        "right_shoulder_yaw_joint": 0.0,
+        "right_elbow_joint": 1.2,
+        "right_wrist_roll_joint": 0.0,
+        "right_wrist_pitch_joint": 0.0,
+        "right_wrist_yaw_joint": 0.0,
+        # Hand joints default to 0
+        ".*": 0.0,
+    },
+    joint_vel={".*": 0.0},
+)
+# Lower arm stiffness for more compliant motion during locomotion
+G1_INSPIRE_TWIST2_CFG.actuators["arms"] = ImplicitActuatorCfg(
+    joint_names_expr=[
+        ".*_shoulder_pitch_joint",
+        ".*_shoulder_roll_joint",
+        ".*_shoulder_yaw_joint",
+        ".*_elbow_joint",
+        ".*_wrist_.*_joint",
+    ],
+    effort_limit=300,
+    velocity_limit=100,
+    stiffness=40.0,
+    damping=10.0,
+    armature={
+        ".*_shoulder_.*": 0.001,
+        ".*_elbow_.*": 0.001,
+        ".*_wrist_.*_joint": 0.001,
+    },
+)

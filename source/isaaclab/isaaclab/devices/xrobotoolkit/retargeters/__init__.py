@@ -14,6 +14,7 @@ from .xr_se3_rel_retargeter import XRSe3RelRetargeter, XRSe3RelRetargeterCfg
 from .xr_t1_gmr_retargeter import XRT1GMRRetargeter, XRT1GMRRetargeterCfg
 from .xr_t1_mink_ik_retargeter import XRT1MinkIKRetargeter, XRT1MinkIKRetargeterCfg
 from .xr_twist_retargeter import TwistOutputFormat, XRTwistRetargeter, XRTwistRetargeterCfg
+from .xr_twist2_g1_retargeter import XRTwist2G1Retargeter, XRTwist2G1RetargeterCfg
 
 __all__ = [
     "GMROutputFormat",
@@ -36,4 +37,6 @@ __all__ = [
     "XRT1MinkIKRetargeterCfg",
     "XRTwistRetargeter",
     "XRTwistRetargeterCfg",
+    "XRTwist2G1Retargeter",
+    "XRTwist2G1RetargeterCfg",
 ]
