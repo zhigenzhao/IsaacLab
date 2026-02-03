@@ -295,7 +295,6 @@ class G1Twist2TeleopEnvCfg(ManagerBasedRLEnvCfg):
                         # TWIST2 body retargeter (29 DOFs)
                         XRTwist2G1RetargeterCfg(
                             sim_device=self.sim.device,
-                            policy_path="/home/zzhao300/code/TWIST2/assets/ckpts/twist2_1017_20k.onnx",
                             robot_type="unitree_g1",
                             human_height=None,  # Auto-estimate
                             use_ground_alignment=True,

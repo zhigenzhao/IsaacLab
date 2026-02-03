@@ -25,11 +25,31 @@ except ImportError:
 # Import GMR library
 try:
     from general_motion_retargeting import GeneralMotionRetargeting as GMR
-    from general_motion_retargeting.utils.xrt import estimate_human_height
     GMR_AVAILABLE = True
 except ImportError:
     GMR_AVAILABLE = False
     print("Warning: GMR library not available. XRGMRRetargeter will not function.")
+
+
+def estimate_human_height(frame_data: dict) -> float:
+    """Estimate human height from body tracking data.
+
+    Args:
+        frame_data: Dictionary of joint data {joint_name: (position, quaternion)}
+
+    Returns:
+        Estimated human height in meters, or 1.75 if estimation fails
+    """
+    if "Head" not in frame_data or "Pelvis" not in frame_data:
+        return 1.75
+    head_pos = frame_data["Head"][0]
+    left_foot_pos = frame_data.get("Left_Foot", (np.zeros(3),))[0]
+    right_foot_pos = frame_data.get("Right_Foot", (np.zeros(3),))[0]
+    min_foot_z = min(left_foot_pos[2], right_foot_pos[2])
+    height = head_pos[2] - min_foot_z + 0.15
+    if height < 1.4 or height > 2.2:
+        return 1.75
+    return height
 
 
 # XRoboToolkit joint names (24 joints for full-body tracking)
@@ -120,7 +140,7 @@ class XRGMRRetargeter(RetargeterBase):
         super().__init__(cfg)
 
         if not GMR_AVAILABLE:
-            raise RuntimeError("GMR library not available. Install from /path/to/GMR repository.")
+            raise RuntimeError("GMR library not available. Install with: pip install -e /path/to/GMR")
 
         # Check threading dependencies
         if cfg.use_threading and not RATE_LIMITER_AVAILABLE:
@@ -208,7 +228,7 @@ class XRGMRRetargeter(RetargeterBase):
 
         # Initialize GMR
         self._gmr = GMR(
-            src_human="xrt",
+            src_human="xrobot",
             tgt_robot=self._robot_type,
             actual_human_height=self._human_height,
             solver="daqp",

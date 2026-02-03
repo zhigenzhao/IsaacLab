@@ -5,15 +5,22 @@
 
 """XRoboToolkit controller retargeter using TWIST2 policy for G1 humanoid full-body control."""
 
+import os
+import threading
 from collections import deque
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-import threading
 import torch
 
+# Default path to TWIST2 model (relative to this module)
+_DEFAULT_TWIST2_MODEL_PATH = os.path.join(
+    os.path.dirname(__file__), "assets", "twist2", "twist2_1017_20k.onnx"
+)
+
 from isaaclab.devices.retargeter_base import RetargeterBase, RetargeterCfg
+
 from .xr_gmr_retargeter import GMROutputFormat, XRGMRRetargeter, XRGMRRetargeterCfg
 from .xr_twist_retargeter import TwistOutputFormat, euler_from_quat, quat_rotate_inverse
 
@@ -92,26 +99,18 @@ DEFAULT_DOF_POS = np.array([
     0.0, -0.4, 0.0, 1.2, 0.0, 0.0, 0.0,
 ])
 
-# TWIST2 observation dimensions
-# obs_full = mimic_obs(35) + obs_proprio(92) = 127
-# obs_hist = 10 frames * 127 = 1270
-# future_obs = mimic_obs(35) = 35
-# Total: 127 + 1270 + 35 = 1432
-# But actually: mimic_obs(35) + obs_proprio(92) = 127, history = 10*127 = 1270, future = 5 (not 35)
-# Let's compute based on TWIST2 paper/code:
+# TWIST2 observation structure (from server_low_level_g1_sim.py):
 # mimic_obs = xy_vel(2) + z(1) + roll(1) + pitch(1) + yaw_vel(1) + dof_pos(29) = 35
-# obs_proprio = ang_vel*0.25(3) + rpy[:2](2) + dof_pos_offset(29) + dof_vel*0.05(29) + last_action(29) = 92
-# obs_full = 35 + 92 = 127
-# history = 10 * 127 = 1270
-# future = mimic_obs = 35
-# total = 127 + 1270 + 35 = 1432
-# Actually based on the plan: 1402 dims total
-# Let's use: obs_full(127) + obs_hist(1270) + future_obs(5) = 1402
+# proprio_obs = ang_vel*0.25(3) + rpy[:2](2) + dof_pos_offset(29) + dof_vel*0.05(29) + last_action(29) = 92
+# obs_single = mimic_obs + proprio_obs = 35 + 92 = 127
+# obs_hist = 10 frames * 127 = 1270
+# future_obs = mimic_obs = 35
+# total = obs_single * (history_len + 1) + mimic_obs = 127 * 11 + 35 = 1432
 DIM_MIMIC_OBS = 35
 DIM_PROPRIO_OBS = 92
 DIM_SINGLE_OBS = DIM_MIMIC_OBS + DIM_PROPRIO_OBS  # 127
 HISTORY_LENGTH = 10
-DIM_FUTURE_OBS = 5  # Based on 1402 total: 127 + 1270 + 5 = 1402
+DIM_FUTURE_OBS = DIM_MIMIC_OBS  # 35 - future trajectory uses same dims as mimic_obs
 
 
 class XRTwist2G1Retargeter(RetargeterBase):
@@ -176,7 +175,7 @@ class XRTwist2G1Retargeter(RetargeterBase):
             output_format=GMROutputFormat.FULL_QPOS,
             headless=self._gmr_headless,
             use_threading=True,  # GMR always threaded for performance
-            thread_rate_hz=90.0,
+            thread_rate_hz=60.0,
         )
         self._gmr_retargeter = XRGMRRetargeter(gmr_cfg)
 
@@ -444,16 +443,16 @@ class XRTwist2G1Retargeter(RetargeterBase):
     def _construct_obs(self, gmr_qpos: np.ndarray) -> np.ndarray:
         """Construct full observation with history.
 
-        TWIST2 observation structure (1402 dims total):
+        TWIST2 observation structure (1432 dims total):
         - obs_full (127): mimic_obs(35) + obs_proprio(92)
         - obs_hist (1270): 10 frames * 127
-        - future_obs (5): placeholder for future trajectory
+        - future_obs (35): future trajectory (uses current mimic_obs)
 
         Args:
             gmr_qpos: GMR output for mimic observations
 
         Returns:
-            Full observation vector with history (1, 1402)
+            Full observation vector with history (1, 1432)
         """
         # Get current observations
         mimic_obs = self._get_mimic_obs(gmr_qpos)
@@ -463,9 +462,9 @@ class XRTwist2G1Retargeter(RetargeterBase):
         # Get history (oldest to newest, flattened)
         obs_hist = np.array(self._obs_history_buf).flatten()
 
-        # Future observation (simplified - just use mimic_obs for now)
-        # In full TWIST2, this would be future trajectory from GMR
-        future_obs = np.zeros(DIM_FUTURE_OBS)
+        # Future observation - use current mimic_obs as placeholder
+        # (matches TWIST2 deployment: future_obs = action_mimic.copy())
+        future_obs = mimic_obs.copy()
 
         # Full observation
         obs_full = np.concatenate([current_obs, obs_hist, future_obs])
@@ -675,7 +674,7 @@ class XRTwist2G1RetargeterCfg(RetargeterCfg):
     robot state to output joint position PD targets (29 DOFs).
     """
 
-    policy_path: str = "/home/zzhao300/code/TWIST2/assets/ckpts/twist2_1017_20k.onnx"
+    policy_path: str = _DEFAULT_TWIST2_MODEL_PATH
     """Path to TWIST2 ONNX policy model."""
 
     robot_type: str = "unitree_g1"
