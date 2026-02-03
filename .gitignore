@@ -77,3 +77,6 @@ evaluation_videos/*
 src/*
 
 *.mp4
+# TacSL sensor
+**/tactile_record/*
+**/gelsight_r15_data/*
