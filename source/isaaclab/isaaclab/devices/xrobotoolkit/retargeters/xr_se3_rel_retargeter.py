@@ -24,41 +24,6 @@ R_HEADSET_TO_WORLD = np.array([
 ])
 
 
-@dataclass
-class XRSe3RelRetargeterCfg(RetargeterCfg):
-    """Configuration for XRoboToolkit relative position retargeter."""
-
-    control_hand: str = "right"
-    """Which hand to use for control: 'left' or 'right'."""
-
-    pos_scale_factor: float = 1.0
-    """Amplification factor for position changes (higher = larger robot movements)."""
-
-    rot_scale_factor: float = 1.0
-    """Amplification factor for rotation changes (higher = larger robot rotations)."""
-
-    activation_source: str = "grip"
-    """Input source for activation: 'grip' or 'trigger'."""
-
-    activation_threshold: float = 0.9
-    """Threshold value [0-1] for activation."""
-
-    alpha_pos: float = 0.5
-    """Position smoothing parameter (0-1); higher values track more closely."""
-
-    alpha_rot: float = 0.5
-    """Rotation smoothing parameter (0-1); higher values track more closely."""
-
-    zero_out_xy_rotation: bool = False
-    """If True, ignore rotations around x and y axes, allowing only z-axis rotation."""
-
-    enable_visualization: bool = False
-    """If True, show a visual marker representing the target end-effector pose."""
-
-    R_xr_to_world: np.ndarray | None = None
-    """Rotation matrix to transform XR frame to world frame. If None, uses R_HEADSET_TO_WORLD."""
-
-
 class XRSe3RelRetargeter(RetargeterBase):
     """Retargets XR controller data to end-effector commands using relative positioning.
 
@@ -75,7 +40,7 @@ class XRSe3RelRetargeter(RetargeterBase):
     - Coordinate frame transformation support
     """
 
-    def __init__(self, cfg: XRSe3RelRetargeterCfg):
+    def __init__(self, cfg: "XRSe3RelRetargeterCfg"):
         """Initialize the relative motion retargeter.
 
         Args:
@@ -270,3 +235,40 @@ class XRSe3RelRetargeter(RetargeterBase):
             # Visualization expects [w, x, y, z] format
             rot = torch.tensor([self._visualization_rot], dtype=torch.float32, device=self._sim_device)
             self._goal_marker.visualize(translations=trans, orientations=rot)
+
+
+@dataclass
+class XRSe3RelRetargeterCfg(RetargeterCfg):
+    """Configuration for XRoboToolkit relative position retargeter."""
+
+    control_hand: str = "right"
+    """Which hand to use for control: 'left' or 'right'."""
+
+    pos_scale_factor: float = 1.0
+    """Amplification factor for position changes (higher = larger robot movements)."""
+
+    rot_scale_factor: float = 1.0
+    """Amplification factor for rotation changes (higher = larger robot rotations)."""
+
+    activation_source: str = "grip"
+    """Input source for activation: 'grip' or 'trigger'."""
+
+    activation_threshold: float = 0.9
+    """Threshold value [0-1] for activation."""
+
+    alpha_pos: float = 0.5
+    """Position smoothing parameter (0-1); higher values track more closely."""
+
+    alpha_rot: float = 0.5
+    """Rotation smoothing parameter (0-1); higher values track more closely."""
+
+    zero_out_xy_rotation: bool = False
+    """If True, ignore rotations around x and y axes, allowing only z-axis rotation."""
+
+    enable_visualization: bool = False
+    """If True, show a visual marker representing the target end-effector pose."""
+
+    R_xr_to_world: np.ndarray | None = None
+    """Rotation matrix to transform XR frame to world frame. If None, uses R_HEADSET_TO_WORLD."""
+
+    retargeter_type: type[RetargeterBase] = XRSe3RelRetargeter

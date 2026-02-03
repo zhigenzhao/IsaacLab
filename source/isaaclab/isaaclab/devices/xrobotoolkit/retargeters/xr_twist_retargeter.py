@@ -105,40 +105,6 @@ def quat_rotate_inverse(q: np.ndarray, v: np.ndarray) -> np.ndarray:
     return a - b + c
 
 
-@dataclass
-class XRTwistRetargeterCfg(RetargeterCfg):
-    """Configuration for XRoboToolkit TWIST policy retargeter.
-
-    This retargeter uses the TWIST policy to perform full-body motion tracking,
-    combining GMR motion reference with proprioceptive robot state to output
-    joint position targets.
-    """
-
-    twist_config_path: str = ""
-    """Path to TWIST YAML configuration file containing model path, DOF indices, scales, etc."""
-
-    robot_type: str = "booster_t1_29dof"
-    """Target robot type for GMR retargeting. Supported: booster_t1_29dof, unitree_g1, etc."""
-
-    human_height: float | None = None
-    """Human height in meters. If None, auto-estimate from first frame."""
-
-    use_ground_alignment: bool = True
-    """If True, automatically align body to ground plane (important for headset-relative tracking)."""
-
-    use_threading: bool = True
-    """If True, run TWIST inference in a background thread for non-blocking operation."""
-
-    thread_rate_hz: float = 50.0
-    """Update rate for background inference thread in Hz (when use_threading=True)."""
-
-    output_format: TwistOutputFormat = TwistOutputFormat.ABSOLUTE
-    """Output format: ABSOLUTE (target positions) or OFFSET (position offsets)."""
-
-    gmr_headless: bool = True
-    """If True, run GMR without MuJoCo viewer visualization."""
-
-
 class XRTwistRetargeter(RetargeterBase):
     """Retargets XR full-body tracking to robot using TWIST policy.
 
@@ -158,7 +124,7 @@ class XRTwistRetargeter(RetargeterBase):
     - Configurable output format (absolute or offset)
     """
 
-    def __init__(self, cfg: XRTwistRetargeterCfg):
+    def __init__(self, cfg: "XRTwistRetargeterCfg"):
         """Initialize the TWIST retargeter.
 
         Args:
@@ -679,3 +645,39 @@ class XRTwistRetargeter(RetargeterBase):
             import traceback
             traceback.print_exc()
             return self._last_valid_output
+
+
+@dataclass
+class XRTwistRetargeterCfg(RetargeterCfg):
+    """Configuration for XRoboToolkit TWIST policy retargeter.
+
+    This retargeter uses the TWIST policy to perform full-body motion tracking,
+    combining GMR motion reference with proprioceptive robot state to output
+    joint position targets.
+    """
+
+    twist_config_path: str = ""
+    """Path to TWIST YAML configuration file containing model path, DOF indices, scales, etc."""
+
+    robot_type: str = "booster_t1_29dof"
+    """Target robot type for GMR retargeting. Supported: booster_t1_29dof, unitree_g1, etc."""
+
+    human_height: float | None = None
+    """Human height in meters. If None, auto-estimate from first frame."""
+
+    use_ground_alignment: bool = True
+    """If True, automatically align body to ground plane (important for headset-relative tracking)."""
+
+    use_threading: bool = True
+    """If True, run TWIST inference in a background thread for non-blocking operation."""
+
+    thread_rate_hz: float = 50.0
+    """Update rate for background inference thread in Hz (when use_threading=True)."""
+
+    output_format: TwistOutputFormat = TwistOutputFormat.ABSOLUTE
+    """Output format: ABSOLUTE (target positions) or OFFSET (position offsets)."""
+
+    gmr_headless: bool = True
+    """If True, run GMR without MuJoCo viewer visualization."""
+
+    retargeter_type: type[RetargeterBase] = XRTwistRetargeter

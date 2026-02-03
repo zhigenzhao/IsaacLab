@@ -30,32 +30,6 @@ INSPIRE_HAND_JOINT_LIMITS: dict[str, tuple[float, float]] = {
 }
 
 
-@dataclass
-class XRInspireHandRetargeterCfg(RetargeterCfg):
-    """Configuration for XRoboToolkit Inspire hand retargeter.
-
-    This retargeter maps XR controller trigger inputs [0-1] to Inspire hand
-    joint positions for open-close control.
-    """
-
-    hand_joint_names: list[str] = field(default_factory=list)
-    """List of hand joint names in action space order (24 joints: 12 per hand).
-
-    Joint names should follow the convention:
-    - Left hand joints start with "L_" (e.g., "L_index_proximal_joint")
-    - Right hand joints start with "R_" (e.g., "R_index_proximal_joint")
-    """
-
-    mode: str = "continuous"
-    """Hand control mode: 'continuous' (analog) or 'binary' (open/closed)."""
-
-    binary_threshold: float = 0.5
-    """Threshold for binary mode [0-1]. Above threshold = closed, below = open."""
-
-    invert: bool = False
-    """If True, invert the trigger mapping (0 = closed, 1 = open)."""
-
-
 class XRInspireHandRetargeter(RetargeterBase):
     """Retargets XR controller trigger inputs to Inspire hand joint commands.
 
@@ -72,7 +46,7 @@ class XRInspireHandRetargeter(RetargeterBase):
     - Optional inversion for different control conventions
     """
 
-    def __init__(self, cfg: XRInspireHandRetargeterCfg):
+    def __init__(self, cfg: "XRInspireHandRetargeterCfg"):
         """Initialize the Inspire hand retargeter.
 
         Args:
@@ -170,3 +144,31 @@ class XRInspireHandRetargeter(RetargeterBase):
             joint_values.append(value)
 
         return torch.tensor(joint_values, dtype=torch.float32, device=self._sim_device)
+
+
+@dataclass
+class XRInspireHandRetargeterCfg(RetargeterCfg):
+    """Configuration for XRoboToolkit Inspire hand retargeter.
+
+    This retargeter maps XR controller trigger inputs [0-1] to Inspire hand
+    joint positions for open-close control.
+    """
+
+    hand_joint_names: list[str] = field(default_factory=list)
+    """List of hand joint names in action space order (24 joints: 12 per hand).
+
+    Joint names should follow the convention:
+    - Left hand joints start with "L_" (e.g., "L_index_proximal_joint")
+    - Right hand joints start with "R_" (e.g., "R_index_proximal_joint")
+    """
+
+    mode: str = "continuous"
+    """Hand control mode: 'continuous' (analog) or 'binary' (open/closed)."""
+
+    binary_threshold: float = 0.5
+    """Threshold for binary mode [0-1]. Above threshold = closed, below = open."""
+
+    invert: bool = False
+    """If True, invert the trigger mapping (0 = closed, 1 = open)."""
+
+    retargeter_type: type[RetargeterBase] = XRInspireHandRetargeter

@@ -5,6 +5,7 @@
 
 """Factory to create teleoperation devices from configuration."""
 
+import contextlib
 import inspect
 import logging
 from collections.abc import Callable

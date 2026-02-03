@@ -13,42 +13,6 @@ from isaaclab.devices.retargeter_base import RetargeterBase, RetargeterCfg
 from .xr_gmr_retargeter import XRGMRRetargeter, XRGMRRetargeterCfg, GMROutputFormat
 
 
-@dataclass
-class XRT1GMRRetargeterCfg(RetargeterCfg):
-    """Configuration for T1 upper body GMR retargeter.
-
-    This retargeter wraps XRGMRRetargeter to provide T1-specific upper body control.
-    It performs full-body GMR retargeting and extracts only the 16 upper body joints
-    (2 head + 14 arms) to match XRT1MinkIKRetargeter output format.
-
-    Note: Head joints default to [0.0, 0.0] as GMR's T1 model doesn't include head tracking.
-    """
-
-    human_height: float | None = None
-    """Human height in meters. If None, auto-estimate from first frame."""
-
-    use_ground_alignment: bool = True
-    """If True, automatically align body to ground plane (important for headset-relative tracking)."""
-
-    ground_offset: float = 0.0
-    """Manual ground offset adjustment in meters."""
-
-    headless: bool = True
-    """If True, run without MuJoCo viewer visualization. If False, display retargeting result in viewer."""
-
-    show_human_skeleton: bool = True
-    """If True (and headless=False), display human skeleton visualization alongside robot."""
-
-    viewer_fps: int = 30
-    """Frames per second for MuJoCo viewer update (when headless=False)."""
-
-    use_threading: bool = True
-    """If True, run GMR retargeting in a background thread for non-blocking operation."""
-
-    thread_rate_hz: float = 90.0
-    """Update rate for background GMR thread in Hz (when use_threading=True)."""
-
-
 class XRT1GMRRetargeter(RetargeterBase):
     """T1 Upper Body GMR Retargeter - Wrapper for full-body GMR with upper body extraction.
 
@@ -71,7 +35,7 @@ class XRT1GMRRetargeter(RetargeterBase):
     joints are set to zero. For head tracking, use XRT1MinkIKRetargeter instead.
     """
 
-    def __init__(self, cfg: XRT1GMRRetargeterCfg):
+    def __init__(self, cfg: "XRT1GMRRetargeterCfg"):
         """Initialize the T1 GMR retargeter wrapper.
 
         Args:
@@ -169,3 +133,41 @@ class XRT1GMRRetargeter(RetargeterBase):
             traceback.print_exc()
             # Return None - no valid data available
             return None
+
+
+@dataclass
+class XRT1GMRRetargeterCfg(RetargeterCfg):
+    """Configuration for T1 upper body GMR retargeter.
+
+    This retargeter wraps XRGMRRetargeter to provide T1-specific upper body control.
+    It performs full-body GMR retargeting and extracts only the 16 upper body joints
+    (2 head + 14 arms) to match XRT1MinkIKRetargeter output format.
+
+    Note: Head joints default to [0.0, 0.0] as GMR's T1 model doesn't include head tracking.
+    """
+
+    human_height: float | None = None
+    """Human height in meters. If None, auto-estimate from first frame."""
+
+    use_ground_alignment: bool = True
+    """If True, automatically align body to ground plane (important for headset-relative tracking)."""
+
+    ground_offset: float = 0.0
+    """Manual ground offset adjustment in meters."""
+
+    headless: bool = True
+    """If True, run without MuJoCo viewer visualization. If False, display retargeting result in viewer."""
+
+    show_human_skeleton: bool = True
+    """If True (and headless=False), display human skeleton visualization alongside robot."""
+
+    viewer_fps: int = 30
+    """Frames per second for MuJoCo viewer update (when headless=False)."""
+
+    use_threading: bool = True
+    """If True, run GMR retargeting in a background thread for non-blocking operation."""
+
+    thread_rate_hz: float = 90.0
+    """Update rate for background GMR thread in Hz (when use_threading=True)."""
+
+    retargeter_type: type[RetargeterBase] = XRT1GMRRetargeter

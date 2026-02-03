@@ -23,26 +23,6 @@ except ImportError:
     print("Warning: xrobotoolkit_sdk not available. XRControllerDevice will not function properly.")
 
 
-@dataclass
-class XRControllerDeviceCfg(DeviceCfg):
-    """Configuration for XRoboToolkit XR controller devices."""
-
-    pos_sensitivity: float = 0.4
-    """Sensitivity for positional control (m/s)."""
-
-    rot_sensitivity: float = 0.8
-    """Sensitivity for rotational control (rad/s)."""
-
-    control_mode: str = "right_hand"
-    """Control mode: 'right_hand', 'left_hand', or 'dual_hand'."""
-
-    gripper_source: str = "trigger"
-    """Gripper control source: 'trigger', 'grip', or 'button'."""
-
-    deadzone_threshold: float = 0.05
-    """Minimum movement threshold to filter out noise."""
-
-
 class XRControllerDevice(DeviceBase):
     """XRoboToolkit XR controller for sending SE(3) commands as delta poses.
 
@@ -86,7 +66,7 @@ class XRControllerDevice(DeviceBase):
         CONFIG = "config"                        # Device configuration dictionary
         MOTION_TRACKERS = "motion_trackers"      # Dictionary of motion tracker data {serial: {"pose": [x,y,z,qx,qy,qz,qw]}}
 
-    def __init__(self, cfg: XRControllerDeviceCfg, retargeters: list | None = None):
+    def __init__(self, cfg: "XRControllerDeviceCfg", retargeters: list | None = None):
         """Initialize the XR controller device.
 
         Args:
@@ -332,3 +312,25 @@ class XRControllerDevice(DeviceBase):
 
         # Update previous button states
         self._button_pressed_prev = buttons.copy()
+
+
+@dataclass
+class XRControllerDeviceCfg(DeviceCfg):
+    """Configuration for XRoboToolkit XR controller devices."""
+
+    pos_sensitivity: float = 0.4
+    """Sensitivity for positional control (m/s)."""
+
+    rot_sensitivity: float = 0.8
+    """Sensitivity for rotational control (rad/s)."""
+
+    control_mode: str = "right_hand"
+    """Control mode: 'right_hand', 'left_hand', or 'dual_hand'."""
+
+    gripper_source: str = "trigger"
+    """Gripper control source: 'trigger', 'grip', or 'button'."""
+
+    deadzone_threshold: float = 0.05
+    """Minimum movement threshold to filter out noise."""
+
+    class_type: type[DeviceBase] = XRControllerDevice

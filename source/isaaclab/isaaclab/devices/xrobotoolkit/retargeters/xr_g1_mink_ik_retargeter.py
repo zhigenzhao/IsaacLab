@@ -109,75 +109,6 @@ def quat_multiply(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
     return np.array([w, x, y, z])
 
 
-@dataclass
-class XRG1MinkIKRetargeterCfg(RetargeterCfg):
-    """Configuration for XRoboToolkit G1 Mink IK retargeter.
-
-    This retargeter uses the Mink IK library to compute inverse kinematics
-    for G1 humanoid arm control from XR controller poses.
-    """
-
-    xml_path: str = "source/isaaclab_assets/isaaclab_assets/robots/unitree_g1/xml/scene_g1_upper_ik.xml"
-    """Path to MuJoCo XML model file for G1 upper body IK (arm joints only)."""
-
-    headless: bool = True
-    """If True, run without MuJoCo viewer visualization."""
-
-    ik_rate_hz: float = 100.0
-    """IK solver update rate in Hz."""
-
-    collision_avoidance_distance: float = 0.04
-    """Minimum distance from collisions (meters)."""
-
-    collision_detection_distance: float = 0.10
-    """Distance at which collision avoidance activates (meters)."""
-
-    velocity_limit_factor: float = 0.7
-    """Velocity limit scaling factor for joints."""
-
-    reference_frame: str = "trunk"
-    """Reference frame for relative control. Controller movements are interpreted relative to this frame.
-    Common values: 'trunk' (robot's torso), 'world' (global frame)."""
-
-    motion_tracker_config: dict[str, dict[str, str]] | None = None
-    """Optional motion tracker configuration for additional IK constraints.
-
-    Dictionary mapping arm name to tracker config:
-    {
-        "left_arm": {"serial": "TRACKER_SERIAL_1", "link_target": "left_elbow"},
-        "right_arm": {"serial": "TRACKER_SERIAL_2", "link_target": "right_elbow"}
-    }
-
-    Each tracker config contains:
-        - serial: Motion tracker device serial number
-        - link_target: MuJoCo site name to constrain (e.g., elbow site)
-
-    Motion trackers provide additional position constraints during IK solving,
-    improving arm pose accuracy by tracking intermediate joints like elbows.
-
-    Default is None (disabled). To enable, explicitly provide tracker serial numbers.
-    """
-
-    motion_tracker_task_weight: float = 0.8
-    """Weight/priority for motion tracker position tasks in IK solver."""
-
-    arm_length_scale_factor: float = 0.9
-    """Scale factor for arm length when mapping tracker-to-controller offset to robot.
-    Use 1.0 for 1:1 mapping, <1.0 for shorter robot arms, >1.0 for longer robot arms."""
-
-    posture_cost_shoulder: float = 0.5
-    """Posture regularization cost for shoulder joints (3 per arm).
-    Higher values pull shoulders more strongly toward home posture."""
-
-    posture_cost_elbow: float = 0.1
-    """Posture regularization cost for elbow joints (1 per arm).
-    Light regularization to prevent elbow drift."""
-
-    posture_cost_wrist: float = 0.0
-    """Posture regularization cost for wrist joints (3 per arm).
-    Zero by default so wrist joints are free to track hand targets."""
-
-
 class XRG1MinkIKRetargeter(RetargeterBase):
     """Retargets XR controller poses to G1 humanoid arm joint positions using Mink IK.
 
@@ -198,7 +129,7 @@ class XRG1MinkIKRetargeter(RetargeterBase):
     Hand control is handled separately by XRInspireHandRetargeter.
     """
 
-    def __init__(self, cfg: XRG1MinkIKRetargeterCfg):
+    def __init__(self, cfg: "XRG1MinkIKRetargeterCfg"):
         """Initialize the G1 Mink IK retargeter.
 
         Args:
@@ -925,3 +856,74 @@ class XRG1MinkIKRetargeter(RetargeterBase):
         qpos_arm = self.get_qpos_arm()
 
         return torch.tensor(qpos_arm, dtype=torch.float32, device=self._sim_device)
+
+
+@dataclass
+class XRG1MinkIKRetargeterCfg(RetargeterCfg):
+    """Configuration for XRoboToolkit G1 Mink IK retargeter.
+
+    This retargeter uses the Mink IK library to compute inverse kinematics
+    for G1 humanoid arm control from XR controller poses.
+    """
+
+    xml_path: str = "source/isaaclab_assets/isaaclab_assets/robots/unitree_g1/xml/scene_g1_upper_ik.xml"
+    """Path to MuJoCo XML model file for G1 upper body IK (arm joints only)."""
+
+    headless: bool = True
+    """If True, run without MuJoCo viewer visualization."""
+
+    ik_rate_hz: float = 100.0
+    """IK solver update rate in Hz."""
+
+    collision_avoidance_distance: float = 0.04
+    """Minimum distance from collisions (meters)."""
+
+    collision_detection_distance: float = 0.10
+    """Distance at which collision avoidance activates (meters)."""
+
+    velocity_limit_factor: float = 0.7
+    """Velocity limit scaling factor for joints."""
+
+    reference_frame: str = "trunk"
+    """Reference frame for relative control. Controller movements are interpreted relative to this frame.
+    Common values: 'trunk' (robot's torso), 'world' (global frame)."""
+
+    motion_tracker_config: dict[str, dict[str, str]] | None = None
+    """Optional motion tracker configuration for additional IK constraints.
+
+    Dictionary mapping arm name to tracker config:
+    {
+        "left_arm": {"serial": "TRACKER_SERIAL_1", "link_target": "left_elbow"},
+        "right_arm": {"serial": "TRACKER_SERIAL_2", "link_target": "right_elbow"}
+    }
+
+    Each tracker config contains:
+        - serial: Motion tracker device serial number
+        - link_target: MuJoCo site name to constrain (e.g., elbow site)
+
+    Motion trackers provide additional position constraints during IK solving,
+    improving arm pose accuracy by tracking intermediate joints like elbows.
+
+    Default is None (disabled). To enable, explicitly provide tracker serial numbers.
+    """
+
+    motion_tracker_task_weight: float = 0.8
+    """Weight/priority for motion tracker position tasks in IK solver."""
+
+    arm_length_scale_factor: float = 0.9
+    """Scale factor for arm length when mapping tracker-to-controller offset to robot.
+    Use 1.0 for 1:1 mapping, <1.0 for shorter robot arms, >1.0 for longer robot arms."""
+
+    posture_cost_shoulder: float = 0.5
+    """Posture regularization cost for shoulder joints (3 per arm).
+    Higher values pull shoulders more strongly toward home posture."""
+
+    posture_cost_elbow: float = 0.1
+    """Posture regularization cost for elbow joints (1 per arm).
+    Light regularization to prevent elbow drift."""
+
+    posture_cost_wrist: float = 0.0
+    """Posture regularization cost for wrist joints (3 per arm).
+    Zero by default so wrist joints are free to track hand targets."""
+
+    retargeter_type: type[RetargeterBase] = XRG1MinkIKRetargeter

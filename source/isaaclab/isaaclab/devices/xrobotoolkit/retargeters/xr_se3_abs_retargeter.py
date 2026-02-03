@@ -24,32 +24,6 @@ R_HEADSET_TO_WORLD = np.array([
 ])
 
 
-@dataclass
-class XRSe3AbsRetargeterCfg(RetargeterCfg):
-    """Configuration for XRoboToolkit absolute position retargeter."""
-
-    control_hand: str = "right"
-    """Which hand to use for control: 'left' or 'right'."""
-
-    zero_out_xy_rotation: bool = False
-    """If True, zero out rotation around x and y axes."""
-
-    enable_visualization: bool = False
-    """If True, visualize the target pose in the scene."""
-
-    R_xr_to_world: np.ndarray | None = None
-    """Rotation matrix to transform XR frame to world frame. If None, uses R_HEADSET_TO_WORLD."""
-
-    position_offset: np.ndarray | None = None
-    """Offset to apply to controller position [x, y, z]. If None, uses zeros."""
-
-    workspace_bounds_min: np.ndarray | None = None
-    """Minimum workspace bounds [x, y, z]. If None, no lower bound."""
-
-    workspace_bounds_max: np.ndarray | None = None
-    """Maximum workspace bounds [x, y, z]. If None, no upper bound."""
-
-
 class XRSe3AbsRetargeter(RetargeterBase):
     """Retargets XR controller data to end-effector commands using absolute positioning.
 
@@ -64,7 +38,7 @@ class XRSe3AbsRetargeter(RetargeterBase):
     - Optional visualization of the target end-effector pose
     """
 
-    def __init__(self, cfg: XRSe3AbsRetargeterCfg):
+    def __init__(self, cfg: "XRSe3AbsRetargeterCfg"):
         """Initialize the absolute pose retargeter.
 
         Args:
@@ -196,3 +170,31 @@ class XRSe3AbsRetargeter(RetargeterBase):
             trans = torch.tensor([position], dtype=torch.float32, device=self._sim_device)
             rot = torch.tensor([rotation], dtype=torch.float32, device=self._sim_device)
             self._goal_marker.visualize(translations=trans, orientations=rot)
+
+
+@dataclass
+class XRSe3AbsRetargeterCfg(RetargeterCfg):
+    """Configuration for XRoboToolkit absolute position retargeter."""
+
+    control_hand: str = "right"
+    """Which hand to use for control: 'left' or 'right'."""
+
+    zero_out_xy_rotation: bool = False
+    """If True, zero out rotation around x and y axes."""
+
+    enable_visualization: bool = False
+    """If True, visualize the target pose in the scene."""
+
+    R_xr_to_world: np.ndarray | None = None
+    """Rotation matrix to transform XR frame to world frame. If None, uses R_HEADSET_TO_WORLD."""
+
+    position_offset: np.ndarray | None = None
+    """Offset to apply to controller position [x, y, z]. If None, uses zeros."""
+
+    workspace_bounds_min: np.ndarray | None = None
+    """Minimum workspace bounds [x, y, z]. If None, no lower bound."""
+
+    workspace_bounds_max: np.ndarray | None = None
+    """Maximum workspace bounds [x, y, z]. If None, no upper bound."""
+
+    retargeter_type: type[RetargeterBase] = XRSe3AbsRetargeter

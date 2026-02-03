@@ -33,12 +33,6 @@ XRT_JOINT_NAMES = [
 ]
 
 
-@dataclass
-class XRControllerFullBodyDeviceCfg(DeviceCfg):
-    """Configuration for XRoboToolkit full-body tracking device."""
-    pass  # No additional configuration needed for now
-
-
 class XRControllerFullBodyDevice(DeviceBase):
     """XRoboToolkit full-body tracking device for recording body joint states and button inputs.
 
@@ -75,7 +69,7 @@ class XRControllerFullBodyDevice(DeviceBase):
         TIMESTAMP = "timestamp"                  # Timestamp in nanoseconds
         CONFIG = "config"                        # Device configuration dictionary
 
-    def __init__(self, cfg: XRControllerFullBodyDeviceCfg, retargeters: list | None = None):
+    def __init__(self, cfg: "XRControllerFullBodyDeviceCfg", retargeters: list | None = None):
         """Initialize the XR full-body tracking device.
 
         Args:
@@ -256,3 +250,10 @@ class XRControllerFullBodyDevice(DeviceBase):
 
         # Update previous button states
         self._button_pressed_prev = buttons.copy()
+
+
+@dataclass
+class XRControllerFullBodyDeviceCfg(DeviceCfg):
+    """Configuration for XRoboToolkit full-body tracking device."""
+
+    class_type: type[DeviceBase] = XRControllerFullBodyDevice

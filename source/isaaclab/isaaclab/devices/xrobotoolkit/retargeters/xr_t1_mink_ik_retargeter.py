@@ -99,82 +99,6 @@ def quat_multiply(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
     return np.array([w, x, y, z])
 
 
-@dataclass
-class XRT1MinkIKRetargeterCfg(RetargeterCfg):
-    """Configuration for XRoboToolkit T1 Mink IK retargeter.
-
-    This retargeter uses the Mink IK library to compute inverse kinematics
-    for T1 humanoid arm control from XR controller poses.
-    """
-
-    xml_path: str = "source/isaaclab_assets/isaaclab_assets/robots/xmls/scene_t1_ik.xml"
-    """Path to MuJoCo XML model file for T1 IK."""
-
-    headless: bool = True
-    """If True, run without MuJoCo viewer visualization."""
-
-    ik_rate_hz: float = 100.0
-    """IK solver update rate in Hz."""
-
-    collision_avoidance_distance: float = 0.04
-    """Minimum distance from collisions (meters)."""
-
-    collision_detection_distance: float = 0.10
-    """Distance at which collision avoidance activates (meters)."""
-
-    velocity_limit_factor: float = 0.7
-    """Velocity limit scaling factor for joints."""
-
-    output_joint_positions_only: bool = False
-    """If True, output only the 16 joint positions. If False, output 30 elements including hand targets."""
-
-    reference_frame: str = "trunk"
-    """Reference frame for relative control. Controller movements are interpreted relative to this frame.
-    Common values: 'trunk' (robot's torso), 'world' (global frame)."""
-
-    enable_head_tracking: bool = False
-    """If True, track headset orientation with direct joint control. If False, use fixed head angles."""
-
-    fixed_head_yaw: float = 0.0
-    """Fixed yaw angle for head (radians) when head tracking is disabled."""
-
-    fixed_head_pitch: float = 1.0472
-    """Fixed pitch angle for head (radians) when head tracking is disabled. Default: 1.0472 rad (60 deg)."""
-
-    head_task_orientation_cost: float = 3.0
-    """Cost/weight for head orientation tracking in IK solver (only used if enable_head_tracking=True)."""
-
-    head_task_position_cost: float = 0.0
-    """Cost for head position (should be 0.0 - orientation only) (only used if enable_head_tracking=True)."""
-
-    head_task_lm_damping: float = 0.03
-    """Levenberg-Marquardt damping for head IK task (only used if enable_head_tracking=True)."""
-
-    motion_tracker_config: dict[str, dict[str, str]] | None = None
-    """Optional motion tracker configuration for additional IK constraints.
-
-    Dictionary mapping arm name to tracker config:
-    {
-        "left_arm": {"serial": "PC2310BLH9020707B", "link_target": "Left_Elbow_Link"},
-        "right_arm": {"serial": "PC2310BLH9020740B", "link_target": "Right_Elbow_Link"}
-    }
-
-    Each tracker config contains:
-        - serial: Motion tracker device serial number
-        - link_target: MuJoCo link name to constrain (e.g., elbow link)
-
-    Motion trackers provide additional position constraints during IK solving,
-    improving arm pose accuracy by tracking intermediate joints like elbows.
-    """
-
-    motion_tracker_task_weight: float = 0.8
-    """Weight/priority for motion tracker position tasks in IK solver."""
-
-    arm_length_scale_factor: float = 0.9
-    """Scale factor for arm length when mapping tracker-to-controller offset to robot.
-    Use 1.0 for 1:1 mapping, <1.0 for shorter robot arms, >1.0 for longer robot arms."""
-
-
 class XRT1MinkIKRetargeter(RetargeterBase):
     """Retargets XR controller poses to T1 humanoid arm joint positions using Mink IK.
 
@@ -195,7 +119,7 @@ class XRT1MinkIKRetargeter(RetargeterBase):
         - Elements 23-29: Right hand target pose in body frame [x, y, z, qw, qx, qy, qz]
     """
 
-    def __init__(self, cfg: XRT1MinkIKRetargeterCfg):
+    def __init__(self, cfg: "XRT1MinkIKRetargeterCfg"):
         """Initialize the T1 Mink IK retargeter.
 
         Args:
@@ -1073,3 +997,65 @@ class XRT1MinkIKRetargeter(RetargeterBase):
             right_hand_target = self.get_mocap_pose_b("right_hand_target")
             output = np.concatenate([qpos_upper, left_hand_target, right_hand_target])
             return torch.tensor(output, dtype=torch.float32, device=self._sim_device)
+
+
+@dataclass
+class XRT1MinkIKRetargeterCfg(RetargeterCfg):
+    """Configuration for T1 Mink IK retargeter.
+
+    This retargeter uses Mink IK to compute T1 arm joint positions from XR controller poses.
+    """
+
+    xml_path: str = ""
+    """Path to T1 MuJoCo XML model file."""
+
+    headless: bool = True
+    """If True, run without MuJoCo viewer visualization."""
+
+    ik_rate_hz: float = 200.0
+    """IK solver update rate in Hz."""
+
+    output_joint_positions_only: bool = True
+    """If True, output only joint positions. If False, include hand target poses."""
+
+    enable_head_tracking: bool = False
+    """If True, track headset orientation for head joint control."""
+
+    fixed_head_yaw: float = 0.0
+    """Fixed yaw angle for head when not tracking (radians)."""
+
+    fixed_head_pitch: float = 1.0472
+    """Fixed pitch angle for head when not tracking (radians, ~60 degrees down)."""
+
+    head_task_orientation_cost: float = 2.0
+    """Orientation cost for head IK task."""
+
+    head_task_position_cost: float = 0.0
+    """Position cost for head IK task (typically 0 for orientation-only tracking)."""
+
+    head_task_lm_damping: float = 0.03
+    """Levenberg-Marquardt damping for head IK task."""
+
+    velocity_limit_factor: float = 1.0
+    """Scaling factor for joint velocity limits."""
+
+    collision_avoidance_distance: float = 0.02
+    """Minimum distance from collisions in meters."""
+
+    collision_detection_distance: float = 0.05
+    """Distance at which collision avoidance activates in meters."""
+
+    reference_frame: str = "trunk"
+    """Site name to use as reference frame for relative control."""
+
+    motion_tracker_config: dict | None = None
+    """Configuration for motion trackers (elbow tracking). Format:
+    {"left_arm": {"link_target": "site_name", "serial": "tracker_serial"}, ...}"""
+
+    motion_tracker_task_weight: float = 1.0
+    """Position task weight for motion tracker targets."""
+
+    arm_length_scale_factor: float = 1.0
+    """Scale factor for arm length (tracker offset scaling)."""
+
+    retargeter_type: type[RetargeterBase] = XRT1MinkIKRetargeter

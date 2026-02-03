@@ -90,46 +90,6 @@ def quat_mul_np(x: np.ndarray, y: np.ndarray, scalar_first: bool = True) -> np.n
     return res
 
 
-@dataclass
-class XRGMRRetargeterCfg(RetargeterCfg):
-    """Configuration for XRoboToolkit GMR retargeter.
-
-    This retargeter uses the GMR (General Motion Retargeting) library to perform
-    full-body inverse kinematics, mapping 24 body joints from XRoboToolkit tracking
-    to robot joint positions.
-    """
-
-    robot_type: str = "unitree_g1"
-    """Target robot type. Supported: unitree_g1, unitree_h1, booster_t1_29dof, fourier_n1, etc."""
-
-    human_height: float | None = None
-    """Human height in meters. If None, auto-estimate from first frame."""
-
-    use_ground_alignment: bool = True
-    """If True, automatically align body to ground plane (important for headset-relative tracking)."""
-
-    ground_offset: float = 0.0
-    """Manual ground offset adjustment in meters."""
-
-    output_format: GMROutputFormat = GMROutputFormat.FULL_QPOS
-    """Output format: FULL_QPOS or JOINT_POSITIONS_ONLY."""
-
-    headless: bool = True
-    """If True, run without MuJoCo viewer visualization. If False, display retargeting result in viewer."""
-
-    show_human_skeleton: bool = True
-    """If True (and headless=False), display human skeleton visualization alongside robot."""
-
-    viewer_fps: int = 30
-    """Frames per second for MuJoCo viewer update (when headless=False)."""
-
-    use_threading: bool = True
-    """If True, run GMR retargeting in a background thread for non-blocking operation."""
-
-    thread_rate_hz: float = 90.0
-    """Update rate for background GMR thread in Hz (when use_threading=True)."""
-
-
 class XRGMRRetargeter(RetargeterBase):
     """Retargets XR full-body tracking to robot using GMR (General Motion Retargeting).
 
@@ -147,7 +107,7 @@ class XRGMRRetargeter(RetargeterBase):
     to GMR's world frame, then performs IK to compute robot joint angles.
     """
 
-    def __init__(self, cfg: XRGMRRetargeterCfg):
+    def __init__(self, cfg: "XRGMRRetargeterCfg"):
         """Initialize the GMR retargeter.
 
         Args:
@@ -582,3 +542,45 @@ class XRGMRRetargeter(RetargeterBase):
             else:
                 print("[XRGMRRetargeter] No cached output available")
                 return None
+
+
+@dataclass
+class XRGMRRetargeterCfg(RetargeterCfg):
+    """Configuration for XRoboToolkit GMR retargeter.
+
+    This retargeter uses the GMR (General Motion Retargeting) library to perform
+    full-body inverse kinematics, mapping 24 body joints from XRoboToolkit tracking
+    to robot joint positions.
+    """
+
+    robot_type: str = "unitree_g1"
+    """Target robot type. Supported: unitree_g1, unitree_h1, booster_t1_29dof, fourier_n1, etc."""
+
+    human_height: float | None = None
+    """Human height in meters. If None, auto-estimate from first frame."""
+
+    use_ground_alignment: bool = True
+    """If True, automatically align body to ground plane (important for headset-relative tracking)."""
+
+    ground_offset: float = 0.0
+    """Manual ground offset adjustment in meters."""
+
+    output_format: GMROutputFormat = GMROutputFormat.FULL_QPOS
+    """Output format: FULL_QPOS or JOINT_POSITIONS_ONLY."""
+
+    headless: bool = True
+    """If True, run without MuJoCo viewer visualization. If False, display retargeting result in viewer."""
+
+    show_human_skeleton: bool = True
+    """If True (and headless=False), display human skeleton visualization alongside robot."""
+
+    viewer_fps: int = 30
+    """Frames per second for MuJoCo viewer update (when headless=False)."""
+
+    use_threading: bool = True
+    """If True, run GMR retargeting in a background thread for non-blocking operation."""
+
+    thread_rate_hz: float = 90.0
+    """Update rate for background GMR thread in Hz (when use_threading=True)."""
+
+    retargeter_type: type[RetargeterBase] = XRGMRRetargeter
