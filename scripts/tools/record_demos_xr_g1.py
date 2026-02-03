@@ -77,32 +77,29 @@ simulation_app = app_launcher.app
 
 
 # Third-party imports
-import gymnasium as gym
-import numpy as np
 import os
 import time
-import torch
+from collections.abc import Callable
+
+import gymnasium as gym
+import isaaclab_mimic.envs  # noqa: F401
+import isaaclab_tasks  # noqa: F401
+
+# Explicitly import pick_place since it's blacklisted in isaaclab_tasks
+# due to pinocchio compatibility concerns (but works for our G1 XR use case)
+import isaaclab_tasks.manager_based.manipulation.pick_place  # noqa: F401
+import numpy as np
 
 # Omniverse logger
 import omni.log
 import omni.ui as ui
-
+import torch
 from isaaclab.devices.teleop_device_factory import create_teleop_device
-
-import isaaclab_mimic.envs  # noqa: F401
-from isaaclab_mimic.ui.instruction_display import InstructionDisplay, show_subtask_instructions
-
-from collections.abc import Callable
-
 from isaaclab.envs import DirectRLEnvCfg, ManagerBasedRLEnvCfg
 from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManagerCfg
 from isaaclab.envs.ui import EmptyWindow
 from isaaclab.managers import DatasetExportMode
-
-import isaaclab_tasks  # noqa: F401
-# Explicitly import pick_place since it's blacklisted in isaaclab_tasks
-# due to pinocchio compatibility concerns (but works for our G1 XR use case)
-import isaaclab_tasks.manager_based.manipulation.pick_place  # noqa: F401
+from isaaclab_mimic.ui.instruction_display import InstructionDisplay, show_subtask_instructions
 from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
 
 # G1 arm joint names (14 joints: 7 per arm, no head joints)
@@ -578,6 +575,7 @@ def run_simulation_loop(
     env.sim.reset()
     env.reset()
     teleop_interface.reset()
+    print(env.scene["robot"].joint_names)
 
     # Sync device state on initial reset
     if arm_joint_ids is not None and robot is not None:

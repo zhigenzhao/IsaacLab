@@ -281,11 +281,21 @@ class EventCfg:
         mode="reset",
         params={
             "pose_range": {
-                "x": [-0.01, 0.01],
-                "y": [-0.01, 0.01],
+                "x": [-0.025, 0.025],
+                "y": [-0.025, 0.025],
             },
             "velocity_range": {},
             "asset_cfg": SceneEntityCfg("object"),
+        },
+    )
+
+    randomize_arm_joints = EventTerm(
+        func=pick_place_mdp.reset_joints_by_offset,
+        mode="reset",
+        params={
+            "position_range": (-0.1, 0.1),
+            "velocity_range": (0.0, 0.0),
+            "asset_cfg": SceneEntityCfg("robot", joint_names=G1_ARM_JOINT_NAMES),
         },
     )
 

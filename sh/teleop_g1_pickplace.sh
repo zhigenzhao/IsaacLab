@@ -1,0 +1,1 @@
+python scripts/tools/record_demos_xr_g1.py --task Isaac-PickPlace-G1-InspireFTP-XR-v0 --teleop_device xr_controller --enable_cameras --device cpu

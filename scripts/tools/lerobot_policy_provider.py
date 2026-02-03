@@ -81,27 +81,37 @@ class LeRobotPolicyProvider:
                    "head_rgb_cam" -> "observation.images.head_rgb"
                    "left_wrist_cam" -> "observation.images.left_wrist"
                    "right_wrist_cam" -> "observation.images.right_wrist"
-        state_key: Name of the state observation in Isaac Lab (default: "joint_pos")
-        upper_body_dof: Number of upper body DOFs in action output (default: 18 for T1)
-        state_dof: Number of state DOFs to pass to policy (default: 21 for all T1 joints)
+        image_key_mapping: Explicit mapping from Isaac Lab obs key to LeRobot observation key.
+                          Example: {"head_cam_rgb": "observation.images.head_rgb"}
+                          If None, falls back to heuristic: replace("_cam", "") then prefix.
+        state_key: Name of the state observation in Isaac Lab (default: "joint_pos").
+                  Used when state_keys is not provided.
+        state_keys: List of state observation keys to concatenate. Overrides state_key when provided.
+                   Example: ["robot_joint_pos", "hand_joint_state"]
+        upper_body_dof: Number of upper body DOFs in action output. If None, auto-detected from policy config.
+        state_dof: Number of state DOFs to pass to policy. If None, auto-detected from policy config.
 
     Example:
-        >>> # Single camera
+        >>> # Single camera (T1 defaults)
         >>> provider = LeRobotPolicyProvider(
         ...     model_path="kelvinzhaozg/t1_stack_cube_policy",
         ...     device="cuda",
         ...     use_action_chunking=True,
         ...     execution_horizon=8
         ... )
-        >>> # Multiple cameras
+        >>> # G1 with explicit key mapping and auto-detect dimensions
         >>> provider = LeRobotPolicyProvider(
-        ...     model_path="kelvinzhaozg/t1_stack_cube_policy",
+        ...     model_path="path/to/g1_policy",
         ...     device="cuda",
-        ...     image_keys=["head_rgb_cam", "left_wrist_cam", "right_wrist_cam"]
+        ...     image_keys=["head_cam_rgb"],
+        ...     image_key_mapping={"head_cam_rgb": "observation.images.head_rgb"},
+        ...     state_key="robot_joint_pos",
+        ...     upper_body_dof=None,  # auto-detect from policy config
+        ...     state_dof=None,       # auto-detect from policy config
         ... )
         >>> provider.reset()
         >>> obs = env.observation_manager.compute_group("policy")
-        >>> action = provider.get_action(obs)  # Returns (18,) joint positions
+        >>> action = provider.get_action(obs)
     """
 
     def __init__(
@@ -111,9 +121,11 @@ class LeRobotPolicyProvider:
         use_action_chunking: bool = True,
         execution_horizon: int = 8,
         image_keys: str | list[str] = "head_rgb_cam",
+        image_key_mapping: dict[str, str] | None = None,
         state_key: str = "joint_pos",
-        upper_body_dof: int = 18,
-        state_dof: int = 21,
+        state_keys: list[str] | None = None,
+        upper_body_dof: int | None = None,
+        state_dof: int | None = None,
     ):
         """
         Initialize the policy provider.
@@ -124,9 +136,12 @@ class LeRobotPolicyProvider:
             use_action_chunking: Whether to use action chunking
             execution_horizon: Number of steps before starting next inference
             image_keys: Single image key or list of image keys for Isaac Lab observations
-            state_key: Key for joint positions in Isaac Lab observations
-            upper_body_dof: Number of upper body DOFs (actions will be this size)
-            state_dof: Number of state DOFs to pass to policy (default: 21 for all T1 joints)
+            image_key_mapping: Explicit mapping from Isaac Lab obs key to LeRobot observation key.
+                             If None, falls back to heuristic (replace "_cam" suffix).
+            state_key: Key for joint positions in Isaac Lab observations (used if state_keys is None)
+            state_keys: List of state obs keys to concatenate. Overrides state_key when provided.
+            upper_body_dof: Number of upper body DOFs (actions). None = auto-detect from policy config.
+            state_dof: Number of state DOFs for policy input. None = auto-detect from policy config.
         """
         self.model_path = str(model_path)
         self.device = torch.device(device)
@@ -139,12 +154,19 @@ class LeRobotPolicyProvider:
         else:
             self.image_keys = image_keys
 
+        self.image_key_mapping = image_key_mapping
         self.state_key = state_key
-        self.upper_body_dof = upper_body_dof
-        self.state_dof = state_dof
+        self.state_keys = state_keys
+
+        # Store user-provided values (may be None for auto-detect)
+        self._user_upper_body_dof = upper_body_dof
+        self._user_state_dof = state_dof
 
         # Load the policy using LeRobot's from_pretrained
         self._load_policy()
+
+        # Auto-detect dimensions from policy config if not explicitly provided
+        self._resolve_dimensions()
 
         # Setup action chunking if enabled
         if self.use_action_chunking:
@@ -164,8 +186,14 @@ class LeRobotPolicyProvider:
         if use_action_chunking:
             print(f"  Execution horizon: {execution_horizon}")
         print(f"  Image observations: {', '.join(self.image_keys)}")
-        print(f"  State input dim: {state_dof}")
-        print(f"  Action output dim: {upper_body_dof}")
+        if self.image_key_mapping:
+            print(f"  Image key mapping: {self.image_key_mapping}")
+        if self.state_keys:
+            print(f"  State keys: {self.state_keys}")
+        else:
+            print(f"  State key: {self.state_key}")
+        print(f"  State input dim: {self.state_dof}")
+        print(f"  Action output dim: {self.upper_body_dof}")
 
     def _load_policy(self):
         """Load the pretrained policy using LeRobot's factory."""
@@ -226,6 +254,80 @@ class LeRobotPolicyProvider:
                 f"Error: {e}"
             )
 
+    def _resolve_dimensions(self):
+        """Resolve upper_body_dof and state_dof from user values or policy config auto-detection."""
+        config = self.policy.config
+
+        # Print full feature information for debugging
+        print("  Policy config features:")
+        if hasattr(config, "input_features"):
+            for key, feat in config.input_features.items():
+                print(f"    input:  {key} -> shape={feat.shape}, type={feat.type}")
+        if hasattr(config, "output_features"):
+            for key, feat in config.output_features.items():
+                print(f"    output: {key} -> shape={feat.shape}, type={feat.type}")
+
+        # Auto-detect action dimension from policy config
+        auto_action_dim = None
+        action_ft = getattr(config, "action_feature", None)
+        if action_ft is not None and hasattr(action_ft, "shape"):
+            auto_action_dim = action_ft.shape[0]
+
+        # Auto-detect state dimension from policy config
+        auto_state_dim = None
+        state_ft = getattr(config, "robot_state_feature", None)
+        if state_ft is not None and hasattr(state_ft, "shape"):
+            auto_state_dim = state_ft.shape[0]
+
+        # Resolve upper_body_dof
+        if self._user_upper_body_dof is not None:
+            self.upper_body_dof = self._user_upper_body_dof
+            if auto_action_dim is not None and auto_action_dim != self._user_upper_body_dof:
+                print(f"  Note: user override upper_body_dof={self._user_upper_body_dof}, "
+                      f"policy config has action_dim={auto_action_dim}")
+        elif auto_action_dim is not None:
+            self.upper_body_dof = auto_action_dim
+            print(f"  Auto-detected upper_body_dof={auto_action_dim} from policy config")
+        else:
+            self.upper_body_dof = 18  # Legacy default (T1)
+            print(f"  Warning: could not auto-detect action dim, using default upper_body_dof=18")
+
+        # Resolve state_dof
+        if self._user_state_dof is not None:
+            self.state_dof = self._user_state_dof
+            if auto_state_dim is not None and auto_state_dim != self._user_state_dof:
+                print(f"  Note: user override state_dof={self._user_state_dof}, "
+                      f"policy config has state_dim={auto_state_dim}")
+        elif auto_state_dim is not None:
+            self.state_dof = auto_state_dim
+            print(f"  Auto-detected state_dof={auto_state_dim} from policy config")
+        else:
+            self.state_dof = 21  # Legacy default (T1)
+            print(f"  Warning: could not auto-detect state dim, using default state_dof=21")
+
+        # Validate image key mapping against policy config's expected image features
+        image_features = getattr(config, "image_features", None)
+        if image_features:
+            expected_image_keys = set(image_features.keys())
+            if self.image_key_mapping:
+                mapped_keys = set(self.image_key_mapping.values())
+                missing = expected_image_keys - mapped_keys
+                extra = mapped_keys - expected_image_keys
+                if missing:
+                    print(f"  WARNING: Policy expects image keys not in mapping: {missing}")
+                if extra:
+                    print(f"  WARNING: Mapping provides image keys not expected by policy: {extra}")
+            else:
+                # Show what the policy expects so user can verify heuristic mapping
+                print(f"  Policy expects image keys: {list(expected_image_keys)}")
+                # Show what the heuristic would produce
+                for image_key in self.image_keys:
+                    camera_name = image_key.replace("_cam", "")
+                    heuristic_key = f"observation.images.{camera_name}"
+                    if heuristic_key not in expected_image_keys:
+                        print(f"  WARNING: Heuristic maps '{image_key}' -> '{heuristic_key}' "
+                              f"but policy expects {list(expected_image_keys)}")
+
     def reset(self):
         """Reset the policy and action broker state.
 
@@ -283,11 +385,12 @@ class LeRobotPolicyProvider:
                     rgb_image = rgb_image.permute(2, 0, 1)  # (H, W, C) -> (C, H, W)
 
                 # Map Isaac Lab camera names to LeRobot observation keys
-                # "head_rgb_cam" -> "head_rgb" -> "observation.images.head_rgb"
-                # "left_wrist_cam" -> "left_wrist" -> "observation.images.left_wrist"
-                # "right_wrist_cam" -> "right_wrist" -> "observation.images.right_wrist"
-                camera_name = image_key.replace("_cam", "")  # Remove "_cam" suffix
-                lerobot_key = f"observation.images.{camera_name}"
+                if self.image_key_mapping and image_key in self.image_key_mapping:
+                    lerobot_key = self.image_key_mapping[image_key]
+                else:
+                    # Fallback heuristic: "head_rgb_cam" -> "head_rgb" -> "observation.images.head_rgb"
+                    camera_name = image_key.replace("_cam", "")
+                    lerobot_key = f"observation.images.{camera_name}"
                 raw_obs[lerobot_key] = rgb_image
             else:
                 raise ValueError(
@@ -296,27 +399,39 @@ class LeRobotPolicyProvider:
                 )
 
         # Handle state observation
-        if self.state_key in obs:
-            state = obs[self.state_key]
+        # Determine which keys to use for state
+        keys_for_state = self.state_keys if self.state_keys else [self.state_key]
 
-            # Extract first environment
-            if len(state.shape) == 2:
-                # (num_envs, state_dim) -> (state_dim,)
-                state = state[0]
+        state_parts = []
+        for s_key in keys_for_state:
+            if s_key in obs:
+                s = obs[s_key]
 
-            # Convert to torch tensor if numpy
-            if isinstance(state, np.ndarray):
-                state = torch.from_numpy(state).float()
+                # Extract first environment
+                if len(s.shape) == 2:
+                    s = s[0]
 
-            # Extract state DOFs for policy (first state_dof elements)
-            state = state[: self.state_dof]
+                # Convert to torch tensor if numpy
+                if isinstance(s, np.ndarray):
+                    s = torch.from_numpy(s).float()
 
-            raw_obs["observation.state"] = state
+                state_parts.append(s)
+            else:
+                raise ValueError(
+                    f"Expected state key '{s_key}' not found in observations. "
+                    f"Available keys: {list(obs.keys())}"
+                )
+
+        # Concatenate state parts if multiple keys
+        if len(state_parts) == 1:
+            state = state_parts[0]
         else:
-            raise ValueError(
-                f"Expected state key '{self.state_key}' not found in observations. "
-                f"Available keys: {list(obs.keys())}"
-            )
+            state = torch.cat(state_parts, dim=-1)
+
+        # Extract state DOFs for policy (first state_dof elements)
+        state = state[: self.state_dof]
+
+        raw_obs["observation.state"] = state
 
         # Apply preprocessing pipeline (adds batch dim, normalizes, etc.)
         processed_obs = self.preprocessor(raw_obs)
@@ -360,20 +475,13 @@ class LeRobotPolicyProvider:
         processed_obs, raw_obs_with_batch = self.preprocess_observation(obs)
 
         # Generate action using policy (potentially through action broker)
-        # Note: Policy returns NORMALIZED delta actions, postprocessor handles unnormalization + delta->absolute
         with torch.no_grad():
             if self.use_action_chunking:
                 action = self.action_broker.infer(processed_obs)
             else:
                 action = self.policy.select_action(processed_obs)
 
-        # Postprocess action using the proper pipeline
-        # Pass tuple of (action, raw_observation) to allow AbsoluteJointActionsProcessor
-        # to access the UNNORMALIZED observation for delta->absolute conversion
-        # The postprocessor will:
-        # 1. Unnormalize the delta action
-        # 2. Use the raw (unnormalized) observation state
-        # 3. Convert delta to absolute: absolute_action = unnormalized_delta + unnormalized_state
+        # Postprocess action (unnormalize, optionally convert delta->absolute)
         action = self.postprocessor((action, raw_obs_with_batch))
 
         # Ensure it's a tensor
@@ -403,7 +511,8 @@ class LeRobotPolicyProvider:
         Returns:
             True if format is valid, False otherwise (with warnings printed)
         """
-        required_keys = self.image_keys + [self.state_key]
+        state_keys_to_check = self.state_keys if self.state_keys else [self.state_key]
+        required_keys = self.image_keys + state_keys_to_check
 
         for key in required_keys:
             if key not in obs:
@@ -419,15 +528,18 @@ class LeRobotPolicyProvider:
                 print(f"   Expected: (num_envs, height, width, 3)")
                 return False
 
-        # Check state format
-        state = obs[self.state_key]
-        if len(state.shape) != 2:
-            print(f"❌ Invalid state shape: {state.shape}")
-            print(f"   Expected: (num_envs, num_joints)")
-            return False
+        # Check state format - sum dimensions across all state keys
+        total_state_dim = 0
+        for s_key in state_keys_to_check:
+            state = obs[s_key]
+            if len(state.shape) != 2:
+                print(f"❌ Invalid state shape for '{s_key}': {state.shape}")
+                print(f"   Expected: (num_envs, num_joints)")
+                return False
+            total_state_dim += state.shape[-1]
 
-        if state.shape[-1] < self.state_dof:
-            print(f"❌ State dimension too small: {state.shape[-1]}")
+        if total_state_dim < self.state_dof:
+            print(f"❌ Total state dimension too small: {total_state_dim}")
             print(f"   Expected at least {self.state_dof} joints for policy input")
             return False
 
@@ -444,7 +556,9 @@ class LeRobotPolicyProvider:
             "state_dim": self.state_dof,
             "action_dim": self.upper_body_dof,
             "image_keys": self.image_keys,
+            "image_key_mapping": self.image_key_mapping,
             "state_key": self.state_key,
+            "state_keys": self.state_keys,
         }
 
         if self.use_action_chunking:
