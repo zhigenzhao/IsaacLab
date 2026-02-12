@@ -72,6 +72,7 @@ parser.add_argument("--video_fps", type=int, default=30, help="FPS for recorded 
 parser.add_argument("--save_trajectories", action="store_true", default=False, help="Save trajectory data.")
 parser.add_argument("--trajectory_dir", type=str, default="./trajectories", help="Directory to save trajectories.")
 parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility.")
+parser.add_argument("--log_file", type=str, default=None, help="Path to save episode success log (JSON).")
 parser.add_argument(
     "--compact_actions", action="store_true", default=False,
     help="Enable 16-dim action mode (14 arm + 2 gripper). Expands gripper commands to 24 hand joints via interpolation."
@@ -491,9 +492,10 @@ class PolicyEvaluator:
                     f"Inference: {avg_inference*1000:5.1f}ms"
                 )
 
-        # Check success
-        terminated_val = terminated[0].item() if isinstance(terminated, torch.Tensor) else terminated
-        success = terminated_val and total_reward > 0
+        # Check success by querying the specific "success" termination term.
+        # The environment also has an "object_dropping" termination (failure),
+        # so we cannot treat all non-timeout terminations as success.
+        success = bool(self.env.termination_manager.get_term("success")[0].item())
 
         # Save videos if recorded
         if head_video_writer is not None:
@@ -597,6 +599,36 @@ class PolicyEvaluator:
             print(f"  Reduction factor: {self.args.execution_horizon}x")
 
         print("=" * 70)
+
+        # Save episode success log if requested
+        if self.args.log_file:
+            self._save_success_log()
+
+    def _save_success_log(self):
+        """Save episode success log to a JSON file."""
+        import json
+
+        log_data = {
+            "task": self.args.task,
+            "policy_path": self.args.policy_path,
+            "num_episodes": len(self.metrics_history),
+            "success_rate": float(np.mean([m.success for m in self.metrics_history])),
+            "episodes": [
+                {
+                    "episode": m.episode_num,
+                    "success": m.success,
+                    "episode_length": m.episode_length,
+                    "total_reward": m.total_reward,
+                }
+                for m in self.metrics_history
+            ],
+        }
+
+        log_path = Path(self.args.log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(log_path, "w") as f:
+            json.dump(log_data, f, indent=2)
+        print(f"\nEpisode success log saved to: {log_path}")
 
     def cleanup(self):
         """Clean up resources."""

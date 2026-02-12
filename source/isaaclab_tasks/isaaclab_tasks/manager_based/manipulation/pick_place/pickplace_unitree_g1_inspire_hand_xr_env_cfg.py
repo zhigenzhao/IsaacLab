@@ -10,9 +10,10 @@ Mink IK for arm control. It bypasses the Pink IK action system and uses
 direct joint position control instead.
 """
 
+import torch
+
 import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
-import torch
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.devices.device_base import DevicesCfg
 from isaaclab.devices.xrobotoolkit import (

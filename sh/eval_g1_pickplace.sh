@@ -1,0 +1,1 @@
+python scripts/tools/eval_lerobot_policy_g1.py --task Isaac-PickPlace-G1-InspireFTP-XR-v0 --policy_path kelvinzhaozg/vqcatflow_g1_pick_place_delta_0202 --record_video --enable_cameras --headless --video_dir ./eval_vqflow_g1_pickplace_0212/video --num_episodes 10 --log_file ./eval_vqflow_g1_pickplace_0212/episode_results.json
