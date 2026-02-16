@@ -91,6 +91,8 @@ class LeRobotPolicyProvider:
                    Example: ["robot_joint_pos", "hand_joint_state"]
         upper_body_dof: Number of upper body DOFs in action output. If None, auto-detected from policy config.
         state_dof: Number of state DOFs to pass to policy. If None, auto-detected from policy config.
+        policy_overrides: Key-value pairs to override on the loaded policy config via cli_overrides.
+                         Example: {"critic_repo_path": "path/to/critic", "guidance_weight_max": "1.0"}
 
     Example:
         >>> # Single camera (T1 defaults)
@@ -128,6 +130,7 @@ class LeRobotPolicyProvider:
         upper_body_dof: int | None = None,
         state_dof: int | None = None,
         plugin_packages: list[str] | None = None,
+        policy_overrides: dict[str, str] | None = None,
     ):
         """
         Initialize the policy provider.
@@ -147,9 +150,13 @@ class LeRobotPolicyProvider:
             plugin_packages: List of Python package paths for external lerobot policy plugins
                            (e.g. ["lerobot_policy_vqvfm", "lerobot_policy_cfm"]).
                            These are imported to trigger @register_subclass decorators.
+            policy_overrides: Key-value pairs to override on the loaded policy config.
+                            Passed as cli_overrides to from_pretrained() (e.g.
+                            {"critic_repo_path": "path/to/critic", "guidance_weight_max": "1.0"}).
         """
         self.model_path = str(model_path)
         self.plugin_packages = plugin_packages
+        self.policy_overrides = policy_overrides
         self.device = torch.device(device)
         self.use_action_chunking = use_action_chunking
         self.execution_horizon = execution_horizon
@@ -233,8 +240,11 @@ class LeRobotPolicyProvider:
             # Get the concrete policy class for this type
             policy_cls = get_policy_class(config.type)
 
-            # Load the pretrained policy
-            self.policy = policy_cls.from_pretrained(self.model_path)
+            # Build cli_overrides from policy_overrides dict
+            cli_overrides = [f"--{k}={v}" for k, v in self.policy_overrides.items()] if self.policy_overrides else []
+
+            # Load the pretrained policy (with optional config overrides)
+            self.policy = policy_cls.from_pretrained(self.model_path, cli_overrides=cli_overrides)
             self.policy.to(self.device)
             self.policy.eval()
             print(f"✓ Loaded {config.type} policy successfully")

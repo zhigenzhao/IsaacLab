@@ -69,6 +69,11 @@ parser.add_argument(
     "--plugin_packages", type=str, nargs="*", default=None,
     help="External lerobot policy plugin packages to load (e.g. lerobot_policy_vqvfm lerobot_policy_cfm)."
 )
+parser.add_argument(
+    "--policy_overrides", type=str, nargs="*", default=None,
+    help="Override policy config fields at load time (format: key=value). "
+         "Example: --policy_overrides critic_repo_path=/path/to/critic guidance_weight_max=1.0"
+)
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -331,6 +336,16 @@ class PolicyEvaluator:
         if self.args.use_wrist_cameras:
             image_keys.extend(["left_wrist_cam", "right_wrist_cam"])
 
+        # Parse policy_overrides from CLI (list of "key=value") into dict
+        policy_overrides = None
+        if self.args.policy_overrides:
+            policy_overrides = {}
+            for item in self.args.policy_overrides:
+                if "=" not in item:
+                    raise ValueError(f"Invalid policy override format: '{item}'. Expected key=value")
+                key, value = item.split("=", 1)
+                policy_overrides[key] = value
+
         try:
             self.policy_provider = LeRobotPolicyProvider(
                 model_path=self.args.policy_path,
@@ -339,6 +354,7 @@ class PolicyEvaluator:
                 execution_horizon=self.args.execution_horizon,
                 image_keys=image_keys,
                 plugin_packages=self.args.plugin_packages,
+                policy_overrides=policy_overrides,
             )
         except Exception as e:
             print(f"Failed to create policy provider: {e}")
