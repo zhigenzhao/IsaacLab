@@ -1,0 +1,68 @@
+{
+  "task": "Isaac-PickPlace-G1-InspireFTP-XR-v0",
+  "policy_path": "kelvinzhaozg/vqvfm_g1_pick_place_0202",
+  "num_episodes": 10,
+  "success_rate": 0.7,
+  "episodes": [
+    {
+      "episode": 0,
+      "success": false,
+      "episode_length": 80,
+      "total_reward": 0.0
+    },
+    {
+      "episode": 1,
+      "success": true,
+      "episode_length": 269,
+      "total_reward": 0.0
+    },
+    {
+      "episode": 2,
+      "success": true,
+      "episode_length": 255,
+      "total_reward": 0.0
+    },
+    {
+      "episode": 3,
+      "success": true,
+      "episode_length": 265,
+      "total_reward": 0.0
+    },
+    {
+      "episode": 4,
+      "success": true,
+      "episode_length": 274,
+      "total_reward": 0.0
+    },
+    {
+      "episode": 5,
+      "success": true,
+      "episode_length": 312,
+      "total_reward": 0.0
+    },
+    {
+      "episode": 6,
+      "success": true,
+      "episode_length": 286,
+      "total_reward": 0.0
+    },
+    {
+      "episode": 7,
+      "success": false,
+      "episode_length": 500,
+      "total_reward": 0.0
+    },
+    {
+      "episode": 8,
+      "success": false,
+      "episode_length": 500,
+      "total_reward": 0.0
+    },
+    {
+      "episode": 9,
+      "success": true,
+      "episode_length": 275,
+      "total_reward": 0.0
+    }
+  ]
+}

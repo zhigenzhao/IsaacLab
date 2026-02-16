@@ -77,6 +77,10 @@ parser.add_argument(
     "--compact_actions", action="store_true", default=False,
     help="Enable 16-dim action mode (14 arm + 2 gripper). Expands gripper commands to 24 hand joints via interpolation."
 )
+parser.add_argument(
+    "--plugin_packages", type=str, nargs="*", default=None,
+    help="External lerobot policy plugin packages to load (e.g. lerobot_policy_vqvfm lerobot_policy_cfm)."
+)
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -371,6 +375,7 @@ class PolicyEvaluator:
                 state_key="robot_joint_pos",
                 upper_body_dof=upper_body_dof,
                 state_dof=None,  # auto-detect from policy config
+                plugin_packages=self.args.plugin_packages,
             )
         except Exception as e:
             print(f"Failed to create policy provider: {e}")

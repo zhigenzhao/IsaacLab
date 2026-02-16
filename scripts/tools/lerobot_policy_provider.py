@@ -14,6 +14,7 @@ import torch
 from torch import Tensor
 
 from lerobot.configs.policies import PreTrainedConfig
+from lerobot.configs.parser import load_plugin, PluginLoadError
 from lerobot.policies.factory import get_policy_class, make_pre_post_processors
 from lerobot.processor.converters import transition_to_policy_action
 from lerobot.processor.core import EnvTransition, PolicyAction, TransitionKey
@@ -126,6 +127,7 @@ class LeRobotPolicyProvider:
         state_keys: list[str] | None = None,
         upper_body_dof: int | None = None,
         state_dof: int | None = None,
+        plugin_packages: list[str] | None = None,
     ):
         """
         Initialize the policy provider.
@@ -142,8 +144,12 @@ class LeRobotPolicyProvider:
             state_keys: List of state obs keys to concatenate. Overrides state_key when provided.
             upper_body_dof: Number of upper body DOFs (actions). None = auto-detect from policy config.
             state_dof: Number of state DOFs for policy input. None = auto-detect from policy config.
+            plugin_packages: List of Python package paths for external lerobot policy plugins
+                           (e.g. ["lerobot_policy_vqvfm", "lerobot_policy_cfm"]).
+                           These are imported to trigger @register_subclass decorators.
         """
         self.model_path = str(model_path)
+        self.plugin_packages = plugin_packages
         self.device = torch.device(device)
         self.use_action_chunking = use_action_chunking
         self.execution_horizon = execution_horizon
@@ -195,10 +201,30 @@ class LeRobotPolicyProvider:
         print(f"  State input dim: {self.state_dof}")
         print(f"  Action output dim: {self.upper_body_dof}")
 
+    def _discover_plugins(self):
+        """Import external lerobot policy plugin packages to trigger registration.
+
+        Uses lerobot's load_plugin() which imports the package and all its submodules,
+        causing @PreTrainedConfig.register_subclass decorators to fire.
+        """
+        if not self.plugin_packages:
+            return
+
+        for pkg in self.plugin_packages:
+            try:
+                load_plugin(pkg)
+                print(f"  Loaded plugin: {pkg}")
+            except PluginLoadError as e:
+                print(f"  Warning: Failed to load plugin '{pkg}': {e}")
+
     def _load_policy(self):
         """Load the pretrained policy using LeRobot's factory."""
         try:
             print(f"Loading policy from: {self.model_path}")
+
+            # Discover external policy plugins so their @register_subclass decorators fire.
+            # This is needed for policies that live outside the lerobot package (e.g. VFM_Policy).
+            self._discover_plugins()
 
             # First, load the config to determine policy type
             config = PreTrainedConfig.from_pretrained(self.model_path)

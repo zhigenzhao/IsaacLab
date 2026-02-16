@@ -65,6 +65,10 @@ parser.add_argument(
     default=False,
     help="Include left and right wrist camera observations for the policy."
 )
+parser.add_argument(
+    "--plugin_packages", type=str, nargs="*", default=None,
+    help="External lerobot policy plugin packages to load (e.g. lerobot_policy_vqvfm lerobot_policy_cfm)."
+)
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -334,6 +338,7 @@ class PolicyEvaluator:
                 use_action_chunking=self.args.use_action_chunking,
                 execution_horizon=self.args.execution_horizon,
                 image_keys=image_keys,
+                plugin_packages=self.args.plugin_packages,
             )
         except Exception as e:
             print(f"Failed to create policy provider: {e}")
